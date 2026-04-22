@@ -1,6 +1,6 @@
 {
   "name": "eba-cli",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "CLI to fetch Apple Developer API keys (KEY_ID, ISSUER_ID, PRIVATE_KEY) from App Store Connect",
   "type": "module",
   "bin": {

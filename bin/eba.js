@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { createRequire } from 'module';
-import { getKeyCommand } from '../src/commands/get-key.js';
 import { initCommand } from '../src/commands/init.js';
 import { buildCommand } from '../src/commands/build.js';
 import { prebuildCommand } from '../src/commands/prebuild.js';
@@ -20,12 +19,6 @@ program
   .command('init')
   .description('Create eba.json config file in current directory')
   .action(initCommand);
-
-program
-  .command('key')
-  .description('Login to Apple Developer and fetch API keys (KEY_ID, ISSUER_ID, PRIVATE_KEY)')
-  .option('-o, --output <path>', 'Output file path', 'apple info.md')
-  .action(getKeyCommand);
 
 program
   .command('build')
