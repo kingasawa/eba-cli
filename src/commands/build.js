@@ -47,16 +47,16 @@ export async function buildCommand(options) {
   const env = options.env ?? 'production';
 
   try {
-    // 1. Read eba.json
-    const configPath = resolve(process.cwd(), 'eba.json');
+    // 1. Read eas.json
+    const configPath = resolve(process.cwd(), 'eas.json');
     if (!existsSync(configPath)) {
-      console.error(chalk.red('\n✗ eba.json not found. Run `eba init` first.\n'));
+      console.error(chalk.red('\n✗ eas.json not found. Add ascAppId to your eas.json build profile.\n'));
       process.exit(1);
     }
-    const ebaConfig = JSON.parse(readFileSync(configPath, 'utf8'));
-    const ascAppId = ebaConfig.build?.[env]?.ios?.ascAppId;
+    const easConfig = JSON.parse(readFileSync(configPath, 'utf8'));
+    const ascAppId = easConfig.build?.[env]?.ios?.ascAppId;
     if (!ascAppId) {
-      console.error(chalk.red(`\n✗ build.${env}.ios.ascAppId is not set in eba.json\n`));
+      console.error(chalk.red(`\n✗ build.${env}.ios.ascAppId is not set in eas.json\n`));
       process.exit(1);
     }
 
@@ -112,7 +112,7 @@ export async function buildCommand(options) {
       );
     }
 
-    // Use first workflow; future: support workflow selection via eba.json
+    // Use first workflow; future: support workflow selection via eas.json
     const workflow = workflows[0];
     const workflowName = workflow.attributes?.name ?? workflow.id;
     console.log(chalk.dim(`Workflow: ${workflowName}`));

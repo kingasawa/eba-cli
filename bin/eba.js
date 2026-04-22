@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { createRequire } from 'module';
-import { initCommand } from '../src/commands/init.js';
 import { buildCommand } from '../src/commands/build.js';
 import { prebuildCommand } from '../src/commands/prebuild.js';
 
@@ -12,18 +11,13 @@ const program = new Command();
 
 program
   .name('eba')
-  .description('EBA CLI — Apple Developer & App Store Connect tools')
+  .description('EBA CLI — Build iOS apps on Xcode Cloud without EAS limits')
   .version(version);
 
 program
-  .command('init')
-  .description('Create eba.json config file in current directory')
-  .action(initCommand);
-
-program
   .command('build')
-  .description('Start an Xcode Cloud build on App Store Connect')
-  .option('-e, --env <environment>', 'Build environment defined in eba.json', 'production')
+  .description('Trigger an Xcode Cloud build using config from eas.json')
+  .option('-e, --env <environment>', 'Build environment defined in eas.json', 'production')
   .action(buildCommand);
 
 program

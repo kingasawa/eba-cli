@@ -1,79 +1,78 @@
-# Hướng dẫn build iOS với Xcode Cloud
+# Xcode Cloud Build Guide
 
-Xcode Cloud là dịch vụ CI/CD tích hợp sẵn trong Xcode và App Store Connect, cho phép build iOS app trực tiếp trên server của Apple. Miễn phí **25 giờ compute/tháng** với tài khoản Apple Developer.
-
----
-
-## Yêu cầu trước khi bắt đầu
-
-- Tài khoản [Apple Developer Program](https://developer.apple.com/programs/) ($99/năm)
-- App đã được tạo trên [App Store Connect](https://appstoreconnect.apple.com)
-- Source code lưu trên GitHub (hoặc Bitbucket, GitLab)
-- Xcode 13+ cài đặt trên máy
+Xcode Cloud is Apple's built-in CI/CD service, integrated directly into App Store Connect. It gives you **25 free compute hours/month** with an Apple Developer account — enough for ~75–100 iOS builds per month.
 
 ---
 
-## Bước 1 — Kết nối GitHub với App Store Connect
+## Prerequisites
 
-1. Vào [App Store Connect](https://appstoreconnect.apple.com) → **Xcode Cloud**
-2. Chọn app của bạn → **Get Started** (hoặc **Add Workflow** nếu đã có)
-3. Xcode Cloud sẽ yêu cầu cấp quyền truy cập GitHub → **Connect to GitHub**
-4. Authorize trên GitHub, chọn repository của bạn
+- [Apple Developer Program](https://developer.apple.com/programs/) membership ($99/year)
+- App created on [App Store Connect](https://appstoreconnect.apple.com)
+- Source code hosted on GitHub, Bitbucket, or GitLab
+- Xcode 13+ installed on your Mac
 
 ---
 
-## Bước 2 — Tạo Workflow
+## Step 1 — Connect your repository to App Store Connect
 
-Workflow là bộ cấu hình cho một loại build (ví dụ: build để test, build để release).
+1. Go to [App Store Connect](https://appstoreconnect.apple.com) → **Xcode Cloud**
+2. Select your app → click **Get Started**
+3. Xcode Cloud will ask to connect your source control provider
+4. Authorize GitHub (or Bitbucket / GitLab) and select your repository
 
-1. Trong App Store Connect → Xcode Cloud → chọn app → **Manage Workflows**
-2. Nhấn **+** để tạo workflow mới
-3. Cấu hình cơ bản:
+---
 
-| Field | Giá trị gợi ý |
+## Step 2 — Create a Workflow
+
+A workflow defines how your app is built (which branch, which scheme, what happens after).
+
+1. In App Store Connect → Xcode Cloud → your app → **Manage Workflows**
+2. Click **+** to create a new workflow
+3. Configure:
+
+| Field | Recommended value |
 |---|---|
 | Name | `Production Build` |
-| Environment | Xcode (chọn version mới nhất) |
+| Environment | Latest Xcode version |
 | Clean Build | Enabled |
-| Start Condition | Manual (hoặc Push to branch `main`) |
+| Start Condition | Manual (or push to `main`) |
 
-4. **Archive** → chọn scheme của app (thường là tên app)
-5. **Post-Actions** → thêm **TestFlight Internal Testing** nếu muốn tự động upload
-
-6. **Save**
-
----
-
-## Bước 3 — Cấp quyền code signing
-
-Xcode Cloud tự động quản lý certificates và provisioning profiles.
-
-1. Trong workflow → **Environment** → **Xcode Managed Signing**: Enable
-2. Lần đầu build, Xcode Cloud sẽ tạo certificate và profile tự động
-3. Nếu bị từ chối: vào **App Store Connect → Users and Access → Integrations** → kiểm tra quyền của Xcode Cloud
+4. Under **Archive** → select your app scheme (usually the app name)
+5. Under **Post-Actions** → optionally add **TestFlight Internal Testing** for automatic uploads
+6. Click **Save**
 
 ---
 
-## Bước 4 — Setup ci_scripts với eba-cli
+## Step 3 — Code Signing
 
-Xcode Cloud cần các script để cài dependencies (Node.js, CocoaPods) trước khi build.
+Xcode Cloud can manage certificates and provisioning profiles automatically.
+
+1. In your workflow → **Environment** → enable **Xcode Managed Signing**
+2. On the first build, Xcode Cloud creates the certificate and profile automatically
+3. If it fails: go to **App Store Connect → Users and Access → Integrations** and verify Xcode Cloud permissions
+
+---
+
+## Step 4 — Generate ci_scripts with eba-cli
+
+Xcode Cloud needs shell scripts in `ios/ci_scripts/` to install Node.js and CocoaPods before building a React Native / Expo app.
 
 ```bash
-# Trong thư mục dự án React Native / Expo của bạn:
+# Run from your project root
 eba prebuild
 ```
 
-Lệnh này tạo ra:
+This creates:
 
 ```
 ios/
   ci_scripts/
-    ci_post_clone.sh      ← chạy sau khi clone repo (cài npm + pods)
-    ci_pre_xcodebuild.sh  ← chạy trước build (set build number)
-    ci_post_build.sh      ← chạy sau build (logging)
+    ci_post_clone.sh      ← runs after repo clone: installs npm deps + pods
+    ci_pre_xcodebuild.sh  ← runs before build: syncs Manifest.lock, sets build number
+    ci_post_build.sh      ← runs after build: logs metadata
 ```
 
-Push lên GitHub:
+Push to GitHub before triggering a build:
 
 ```bash
 git add ios/ci_scripts/
@@ -83,15 +82,14 @@ git push
 
 ---
 
-## Bước 5 — Lấy App ID
+## Step 5 — Add ascAppId to eas.json
 
-`eba build` cần `ascAppId` để biết phải build app nào.
+`eba build` needs to know which App Store Connect app to build.
 
-1. Vào [App Store Connect](https://appstoreconnect.apple.com) → **My Apps** → chọn app
-2. Nhìn trên URL: `https://appstoreconnect.apple.com/apps/`**`1234567890`**`/...`
-3. Con số đó chính là `ascAppId`
+1. Go to [App Store Connect](https://appstoreconnect.apple.com) → **My Apps** → select your app
+2. Copy the numeric ID from the URL: `https://appstoreconnect.apple.com/apps/`**`1234567890`**`/...`
 
-Điền vào `eba.json`:
+Add it to `eas.json`:
 
 ```json
 {
@@ -107,16 +105,16 @@ git push
 
 ---
 
-## Bước 6 — Trigger build
+## Step 6 — Trigger a build
 
 ```bash
 eba build
 ```
 
-1. Login Apple ID lần đầu (được cache 1 giờ)
-2. Chọn team (nếu có nhiều team)
-3. Build được trigger tự động
-4. URL theo dõi build log được in ra:
+1. Enter your Apple ID credentials (session cached for 1 hour)
+2. Select your team if you belong to multiple
+3. Build is triggered automatically
+4. A tracking URL is printed:
 
 ```
 ✅ Build started!
@@ -129,41 +127,38 @@ eba build
 
 ## Troubleshooting
 
-### Build fail ở bước `pod install`
+### Build fails at `pod install`
 
-`ci_post_clone.sh` không tìm được Node.js. Kiểm tra:
-- Node đã được cài qua nvm chưa
-- Thử thêm path thủ công vào đầu script nếu nvm path khác
+`ci_post_clone.sh` cannot find Node.js. The script tries common nvm and Homebrew paths automatically. If your setup is different, open the generated script and add your Node path manually.
 
-### Lỗi `No Xcode Cloud product found`
+### `No Xcode Cloud product found`
 
-- App chưa được kích hoạt Xcode Cloud → vào App Store Connect → chọn app → **Xcode Cloud** → Get Started
-- Hoặc `ascAppId` trong `eba.json` bị sai
+- Xcode Cloud is not enabled for this app yet → go to App Store Connect → your app → **Xcode Cloud** → Get Started
+- Or `ascAppId` in `eas.json` is incorrect
 
-### Lỗi `No workflows found`
+### `No workflows found`
 
-- Chưa tạo workflow → làm theo Bước 2
+- No workflow has been created yet → follow Step 2 above
 
-### Lỗi code signing
+### Code signing errors
 
-- Vào App Store Connect → Xcode Cloud → Settings → kiểm tra permissions
-- Đảm bảo bundle ID trong `Info.plist` khớp với app trên App Store Connect
+- Go to App Store Connect → Xcode Cloud → Settings → verify permissions
+- Make sure the bundle ID in `Info.plist` matches the app on App Store Connect exactly
 
-### Session hết hạn
+### Session expired
 
-`eba build` cache session 1 giờ. Nếu quá 1 giờ, login lại tự động khi chạy `eba build`.
+`eba build` caches your Apple ID session for 1 hour. After that it prompts for login automatically.
 
 ---
 
-## So sánh với Expo EAS
+## EAS Free vs Xcode Cloud
 
 | | EAS Build (Free) | Xcode Cloud |
 |---|---|---|
-| Giới hạn | 30 builds/tháng | 25 giờ/tháng |
-| Thời gian build | ~5-10 phút | ~10-20 phút |
-| Setup | Không cần | Cần setup 1 lần |
-| Tùy chỉnh | Giới hạn | Toàn quyền qua ci_scripts |
-| Logs | EAS Dashboard | App Store Connect |
-| TestFlight | Tự động | Tự động (nếu cấu hình) |
-
-> Với app production thực tế, 25 giờ compute Xcode Cloud ~ 75-100 builds/tháng tùy độ phức tạp.
+| Monthly limit | 30 builds | 25 compute hours (~75–100 builds) |
+| Average build time | 5–10 min | 10–20 min |
+| Setup | None | One-time (Steps 1–5 above) |
+| Customization | Limited | Full control via ci_scripts |
+| Build logs | EAS Dashboard | App Store Connect |
+| TestFlight upload | Automatic | Automatic (if configured) |
+| Cost beyond free tier | Pay per build | N/A — included with $99/yr membership |

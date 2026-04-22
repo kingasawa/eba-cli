@@ -1,86 +1,76 @@
 # eba-cli
 
-> **Dành cho các Expo developer đang bị giới hạn số lần build iOS.**
+> **For Expo developers who have hit the EAS free build limit.**
 
-Nếu bạn đang dùng **Expo EAS** và đã hết build credits miễn phí (30 builds/tháng), `eba-cli` là giải pháp thay thế giúp bạn build iOS trực tiếp trên **Xcode Cloud** — miễn phí 25 giờ compute/tháng với tài khoản Apple Developer.
+If you're using **Expo EAS** and have run out of free iOS build credits (30 builds/month), `eba-cli` lets you trigger builds directly on **Xcode Cloud** — Apple's own CI/CD service, included free with an Apple Developer account (25 compute hours/month).
+
+No more waiting to buy more EAS credits. Your app, your infrastructure.
 
 ---
 
-## Tại sao eba-cli?
+## Why eba-cli?
 
-| | Expo EAS Free | Xcode Cloud |
+| | EAS Build (Free) | Xcode Cloud |
 |---|---|---|
-| Build iOS | 30 builds/tháng | 25 giờ compute/tháng |
-| Giá | Hết quota → trả phí | Miễn phí với Apple Developer ($99/năm) |
-| Setup | Không cần | Cần setup 1 lần |
+| iOS builds | 30 builds/month | ~75–100 builds/month* |
+| Cost | Free → paid after limit | Free with Apple Developer ($99/yr) |
+| Setup required | None | One-time setup |
+| Customization | Limited | Full control via ci_scripts |
 
-`eba-cli` xử lý phần setup và trigger build Xcode Cloud ngay từ terminal — không cần mở App Store Connect.
+*Based on ~15 min average build time within 25 compute hours/month.
 
-**[Xem hướng dẫn setup Xcode Cloud chi tiết →](./XCODE_CLOUD_GUIDE.md)**
+**[Full Xcode Cloud setup guide →](https://github.com/kingasawa/eba-cli/blob/main/XCODE_CLOUD_GUIDE.md)**
 
 ---
 
-## Cài đặt
+## Installation
 
 ```bash
 npm install -g eba-cli
 ```
 
----
-
-## Yêu cầu
-
-- Node.js >= 18
-- Tài khoản [Apple Developer](https://developer.apple.com) ($99/năm)
-- Xcode Cloud đã được kích hoạt trên App Store Connect
-- Dự án Expo / React Native với file `app.json`
+**Requirements:** Node.js >= 18, Apple Developer account, Xcode Cloud enabled on App Store Connect.
 
 ---
 
-## Commands
+## Setup
 
-### `eba init`
-
-Tạo file `eba.json` trong thư mục dự án — chứa cấu hình cho `eba build`.
-
-```bash
-eba init
-```
-
-Sau đó điền `ascAppId` vào `eba.json`:
+Add `ascAppId` to your existing `eas.json` under the build profile you want to use:
 
 ```json
 {
-  "cli": { "version": "1.1.0" },
   "build": {
     "production": {
       "ios": {
-        "ascAppId": "YOUR_APP_ID"
+        "ascAppId": "YOUR_APP_STORE_CONNECT_APP_ID"
       }
     }
   }
 }
 ```
 
-> `ascAppId` là App ID trong App Store Connect → Apps → chọn app → copy từ URL.
+> Find your `ascAppId` in App Store Connect → My Apps → select your app → copy the number from the URL.
 
 ---
 
+## Commands
+
 ### `eba prebuild`
 
-Generate `ios/ci_scripts/` — các shell script cần thiết để Xcode Cloud tự động cài dependencies và build đúng cách.
+Generates the `ios/ci_scripts/` folder required by Xcode Cloud to install dependencies and configure the build environment.
 
 ```bash
-# Chạy sau khi đã có ios/ folder (từ expo prebuild hoặc có sẵn)
+# Run from the root of your React Native / Expo project
+# (after ios/ folder already exists from expo prebuild or manually)
 eba prebuild
 ```
 
-Files được tạo:
-- `ios/ci_scripts/ci_post_clone.sh` — cài Node, npm, CocoaPods sau khi clone
-- `ios/ci_scripts/ci_pre_xcodebuild.sh` — sync Manifest.lock, set build number
-- `ios/ci_scripts/ci_post_build.sh` — log sau khi build xong
+Creates:
+- `ios/ci_scripts/ci_post_clone.sh` — installs Node, npm deps, CocoaPods after repo clone
+- `ios/ci_scripts/ci_pre_xcodebuild.sh` — syncs Manifest.lock, sets build number
+- `ios/ci_scripts/ci_post_build.sh` — logs build metadata
 
-Sau khi chạy, **push `ios/` lên GitHub** trước khi trigger build:
+After running, push `ios/` to GitHub before triggering a build:
 
 ```bash
 git add ios/
@@ -92,43 +82,40 @@ git push
 
 ### `eba build`
 
-Trigger build trên Xcode Cloud ngay từ terminal.
+Triggers an Xcode Cloud build from your terminal.
 
 ```bash
 eba build
-# hoặc chỉ định environment
+# or specify an environment
 eba build --env production
 ```
 
-Flow:
-1. Đọc `ascAppId` từ `eba.json`
-2. Login Apple ID (session được cache 1 giờ, không cần login lại)
-3. Tìm Xcode Cloud workflow của app
-4. Trigger build
-5. Trả về URL để theo dõi build log
+What it does:
+1. Reads `ascAppId` from `eas.json`
+2. Logs into Apple ID (session cached for 1 hour)
+3. Finds the Xcode Cloud workflow for your app
+4. Triggers the build
+5. Returns a direct link to track build progress
 
 ---
 
-## Workflow đầy đủ
+## Full workflow
 
 ```bash
-# 1. Khởi tạo config
-eba init
-# Điền ascAppId vào eba.json
-
-# 2. Generate ci_scripts (chỉ cần làm 1 lần hoặc khi thay đổi)
+# One-time setup
 eba prebuild
 git add ios/ && git commit -m "chore: ci scripts" && git push
 
-# 3. Trigger build mỗi khi cần
+# Every time you want to build
 eba build
 ```
 
 ---
 
-## Setup Xcode Cloud
+## Xcode Cloud Setup Guide
 
-Xem hướng dẫn chi tiết tại **[XCODE_CLOUD_GUIDE.md](./XCODE_CLOUD_GUIDE.md)**
+New to Xcode Cloud? See the step-by-step guide:
+**[XCODE_CLOUD_GUIDE.md](https://github.com/kingasawa/eba-cli/blob/main/XCODE_CLOUD_GUIDE.md)**
 
 ---
 
