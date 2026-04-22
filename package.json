@@ -1,6 +1,6 @@
 {
   "name": "eba-cli",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Build iOS apps on Xcode Cloud without EAS limits — for Expo & React Native developers",
   "type": "module",
   "bin": {
