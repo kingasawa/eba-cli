@@ -1,0 +1,5 @@
+node_modules/
+apple info.md
+*.p8
+.env
+.idea/

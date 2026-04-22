@@ -1,0 +1,31 @@
+{
+  "name": "eba-cli",
+  "version": "1.1.0",
+  "description": "CLI to fetch Apple Developer API keys (KEY_ID, ISSUER_ID, PRIVATE_KEY) from App Store Connect",
+  "type": "module",
+  "bin": {
+    "eba": "bin/eba.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "start": "node bin/eba.js"
+  },
+  "keywords": [
+    "apple",
+    "app-store-connect",
+    "apple-developer",
+    "api-key",
+    "ios",
+    "cli"
+  ],
+  "author": "trancatkhanh",
+  "license": "MIT",
+  "dependencies": {
+    "@expo/apple-utils": "^2.1.21",
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "inquirer": "^9.3.7"
+  }
+}
