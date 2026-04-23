@@ -68,9 +68,16 @@ async function autoSetupApiKey() {
       name: 'eba-cli',
       allAppsVisible: true,
       isActive: true,
+      serviceConfigurations: [
+        {
+          serviceType: 'APP_STORE_CONNECT_API',
+          roles: ['ADMIN'],
+          allAppsVisible: true,
+        },
+      ],
     });
   } catch (err) {
-    throw new Error(`Failed to create API key: ${err.message}\nYou may need Admin role.`);
+    throw new Error(`Failed to create API key: ${err.message}`);
   }
 
   const keyId = newKey?.id ?? newKey?.attributes?.keyId;
