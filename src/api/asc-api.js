@@ -9,8 +9,34 @@ import { createSign } from 'crypto';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
+import https from 'https';
 
 const ASC_API_BASE = 'https://api.appstoreconnect.apple.com';
+
+// Use Node https module as fallback for reliable TLS on Windows
+function httpsRequest(url, { method = 'GET', headers = {}, body } = {}) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const req = https.request({
+      hostname: parsed.hostname,
+      path: parsed.pathname + parsed.search,
+      method,
+      headers: {
+        ...headers,
+        ...(body ? { 'Content-Length': Buffer.byteLength(body) } : {}),
+      },
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        resolve({ status: res.statusCode, headers: res.headers, body: data });
+      });
+    });
+    req.on('error', reject);
+    if (body) req.write(body);
+    req.end();
+  });
+}
 
 // ─── JWT ──────────────────────────────────────────────────────────────────────
 
@@ -68,24 +94,26 @@ export function getCredsFilePath() { return CREDS_FILE; }
 // ─── HTTP client ──────────────────────────────────────────────────────────────
 
 async function ascApiRequest(path, { method = 'GET', body, jwt } = {}) {
-  const res = await fetch(`${ASC_API_BASE}${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${jwt}`,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
+  const url = `${ASC_API_BASE}${path}`;
+  if (process.env.DEBUG) console.log(`→ ${method} ${url}`);
 
-  const contentType = res.headers.get('content-type') ?? '';
-  const data = contentType.includes('application/json')
-    ? await res.json().catch(() => null)
-    : await res.text().catch(() => '');
+  const bodyStr = body ? JSON.stringify(body) : undefined;
+  const headers = {
+    Authorization: `Bearer ${jwt}`,
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+  };
 
-  if (!res.ok) {
+  const { status, body: rawBody } = await httpsRequest(url, { method, headers, body: bodyStr });
+
+  let data;
+  try { data = JSON.parse(rawBody); } catch { data = rawBody; }
+
+  if (process.env.DEBUG) console.log(`← ${status}`, JSON.stringify(data, null, 2));
+
+  if (status < 200 || status >= 300) {
     const errs = data?.errors?.map(e => e.detail ?? e.title).join('; ') ?? JSON.stringify(data);
-    throw new Error(`ASC API ${res.status}: ${errs}`);
+    throw new Error(`ASC API ${status}: ${errs}`);
   }
 
   return data;
