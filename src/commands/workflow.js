@@ -191,10 +191,14 @@ export async function workflowCommand(options) {
     console.log(chalk.dim('Fetching connected repositories...'));
     const repos = await getScmRepositories(jwt);
     if (!repos.length) {
-      throw new Error(
-        'No repositories connected to App Store Connect.\n' +
-        '  Connect your GitHub/Bitbucket/GitLab repo in App Store Connect → Xcode Cloud first.'
-      );
+      console.log(chalk.red('\n✗ No source code repositories are connected to App Store Connect.\n'));
+      console.log(chalk.bold('  How to connect your GitHub repository:'));
+      console.log(chalk.dim('  1. Go to App Store Connect → your app → Xcode Cloud → Get Started'));
+      console.log(chalk.dim('  2. Or go to https://appstoreconnect.apple.com → Integrations → Xcode Cloud'));
+      console.log(chalk.dim('  3. Sign in with your GitHub account and grant access to your repo'));
+      console.log(chalk.dim('  4. Re-run this command after connecting\n'));
+      console.log(chalk.dim('  Note: GitHub, Bitbucket, GitLab and Bitbucket Server are all supported.\n'));
+      process.exit(1);
     }
 
     let repoId;
@@ -312,6 +316,17 @@ export async function workflowCommand(options) {
         validate: v => Boolean(v.trim()) || 'Required',
       },
       {
+        type: 'list',
+        name: 'distribution',
+        message: 'Distribution Preparation (after archive):',
+        choices: [
+          { name: 'None (archive only, no distribution)', value: null },
+          { name: 'TestFlight Internal Testing', value: 'TESTFLIGHT_INTERNAL_TESTING' },
+          { name: 'TestFlight External Testing', value: 'TESTFLIGHT_EXTERNAL_TESTING' },
+        ],
+        default: null,
+      },
+      {
         type: 'confirm',
         name: 'cleanBuild',
         message: 'Enable clean build? (recommended)',
@@ -360,6 +375,7 @@ export async function workflowCommand(options) {
       scheme: answers.scheme,
       containerFilePath: answers.containerFilePath,
       clean: answers.cleanBuild,
+      buildDistributionAudience: answers.distribution,
       branchStartCondition,
       tagStartCondition,
       pullRequestStartCondition,

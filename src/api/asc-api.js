@@ -162,11 +162,23 @@ export async function createCiWorkflow(jwt, {
   platform = 'IOS',
   clean = true,
   containerFilePath,
+  buildDistributionAudience = null,
   branchStartCondition = null,
   tagStartCondition = null,
   pullRequestStartCondition = null,
   manualBranchStartCondition = null,
 }) {
+  const archiveAction = {
+    name: 'Archive',
+    actionType: 'ARCHIVE',
+    scheme,
+    platform,
+    isRequiredToPass: true,
+  };
+  if (buildDistributionAudience) {
+    archiveAction.buildDistributionAudience = buildDistributionAudience;
+  }
+
   const attributes = {
     name,
     description: 'Created by eba-cli',
@@ -174,15 +186,7 @@ export async function createCiWorkflow(jwt, {
     isLockedForEditing: false,
     clean,
     containerFilePath,
-    actions: [
-      {
-        name: 'Archive',
-        actionType: 'ARCHIVE',
-        scheme,
-        platform,
-        isRequiredToPass: true,
-      },
-    ],
+    actions: [archiveAction],
   };
 
   // Start conditions — patternType is NOT a valid field, use only pattern + isPrefix
