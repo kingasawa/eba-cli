@@ -49,7 +49,8 @@ async function autoSetupApiKey() {
   console.log(chalk.dim(`Team: ${team.name} (${team.teamId})\n`));
 
   // Connect API uses providerId (numeric), provisioning uses teamId (string)
-  const context = { ...baseAuthState, teamId: team.teamId };
+  // After Teams.selectTeamAsync(), baseAuthState.context has both set correctly
+  const context = baseAuthState.context;
 
   // 2. Check for existing keys & try to get issuerId
   let issuerId = null;
