@@ -43,8 +43,34 @@ async function ensureApiKeyCreds() {
   }
 
   console.log(chalk.bold('\n🔑 App Store Connect API Key required\n'));
-  console.log(chalk.dim('To create a key: App Store Connect → Users and Access → Integrations → App Store Connect API → Generate API Key'));
-  console.log(chalk.dim('Role required: Developer or Admin\n'));
+  console.log(chalk.dim('  Follow these steps to create a key:\n'));
+  console.log(chalk.dim('  1. Go to: https://appstoreconnect.apple.com/access/integrations/api'));
+  console.log(chalk.dim('  2. Click "Generate API Key" (or "+" button)'));
+  console.log(chalk.dim('  3. Give it a name, set Role to "Developer" or "Admin"'));
+  console.log(chalk.dim('  4. Download the .p8 file (only available once!)'));
+  console.log(chalk.dim('  5. Note the Issuer ID (top of the page) and Key ID\n'));
+
+  // Open browser to the API keys page
+  try {
+    const cmd = process.platform === 'win32' ? 'start' :
+      process.platform === 'darwin' ? 'open' : 'xdg-open';
+    const { execFileSync } = await import('child_process');
+    execFileSync(cmd, ['https://appstoreconnect.apple.com/access/integrations/api'],
+      { shell: process.platform === 'win32' });
+    console.log(chalk.green('  ✓ Opened App Store Connect in your browser\n'));
+  } catch {}
+
+  const { ready } = await inquirer.prompt([{
+    type: 'confirm',
+    name: 'ready',
+    message: 'Have you downloaded the .p8 file and noted the Issuer ID + Key ID?',
+    default: false,
+  }]);
+  if (!ready) {
+    console.log(chalk.dim('\nRun "eba workflow" again when ready.\n'));
+    process.exit(0);
+  }
+  console.log('');
 
   const { issuerId, keyId, privateKeyPath } = await inquirer.prompt([
     {
