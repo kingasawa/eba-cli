@@ -21,8 +21,6 @@ Hit the **EAS free build limit** (15 builds/month)? `eba-cli` lets you trigger b
 
 *Based on ~15 min average build time within 25 compute hours/month.
 
-**[Full Xcode Cloud setup guide →](https://github.com/kingasawa/eba-cli/blob/main/XCODE_CLOUD_GUIDE.md)**
-
 ---
 
 ## Installation
@@ -32,6 +30,24 @@ npm install -g eba-cli
 ```
 
 **Requirements:** Node.js >= 18, Apple Developer account, Xcode Cloud enabled on App Store Connect.
+
+---
+
+## Quick Start
+
+```bash
+# 1. Generate Xcode Cloud CI scripts
+eba prebuild
+
+# 2. Push ios/ folder to GitHub
+git add ios/ && git commit -m "chore: add xcode cloud ci scripts" && git push
+
+# 3. Create your Xcode Cloud workflow (fully automated)
+eba workflow
+
+# 4. Trigger a build anytime
+eba build
+```
 
 ---
 
@@ -52,7 +68,7 @@ Add `ascAppId` to your existing `eas.json` under the **`submit`** (or **`build`*
 ```
 
 > Find your `ascAppId` in App Store Connect → My Apps → select your app → copy the number from the URL.
-> 
+>
 > Note: `eba` supports both `submit` (standard EAS) and `build` paths. If both exist, `submit` takes priority.
 
 ---
@@ -64,8 +80,6 @@ Add `ascAppId` to your existing `eas.json` under the **`submit`** (or **`build`*
 Generates the `ios/ci_scripts/` folder required by Xcode Cloud to install dependencies and configure the build environment.
 
 ```bash
-# Run from the root of your React Native / Expo project
-# (after ios/ folder already exists from expo prebuild or manually)
 eba prebuild
 ```
 
@@ -74,7 +88,7 @@ Creates:
 - `ios/ci_scripts/ci_pre_xcodebuild.sh` — syncs Manifest.lock, sets build number
 - `ios/ci_scripts/ci_post_build.sh` — logs build metadata
 
-After running, push `ios/` to GitHub before triggering a build:
+After running, push `ios/` to GitHub before creating a workflow:
 
 ```bash
 git add ios/
@@ -86,28 +100,36 @@ git push
 
 ### `eba workflow`
 
-Can't create a workflow via API? This command collects all the configuration you need, then opens **App Store Connect directly in your browser** with a step-by-step checklist to fill in.
+Creates a full Xcode Cloud workflow automatically via the App Store Connect API — no browser needed.
 
 ```bash
 eba workflow
 ```
 
 What it does:
-1. Reads your `ascAppId` from `eas.json`
-2. Asks for workflow name, Xcode scheme, start condition, post-build action
-3. Opens the correct App Store Connect page in your browser
-4. Prints a formatted checklist with exactly what to fill in — no guessing
+1. Logs in to your Apple account and sets up an ASC API key (first run only)
+2. Reads your `ascAppId` from `eas.json`
+3. Finds the Xcode Cloud product linked to your app
+4. Detects your connected GitHub/GitLab/Bitbucket repository
+5. Prompts for workflow name, Xcode version, scheme, branch/tag/PR trigger, and distribution
+6. Creates the workflow and prints a direct link to it
 
 ```
-📝 Fill in the following when creating the workflow:
+✅ Workflow created successfully!
 
-  Workflow name:       Production Build
-  Xcode version:       Latest Release (recommended)
-  Clean build:         ✓ Enabled
-  Start condition:     Push to branch: main
-  Archive scheme:      MyApp
-  Post-build action:   TestFlight — Internal Testing
+  Name:    Production Build
+  ID:      xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+  Track:   https://appstoreconnect.apple.com/teams/.../apps/.../ci/workflows/...
+
+Run "eba build" to trigger your first build.
 ```
+
+**First-time setup:** On the first run, `eba workflow` will guide you through creating an App Store Connect API key. The key is saved locally and reused automatically on future runs.
+
+**Prerequisites before running `eba workflow`:**
+- Your app must be registered on App Store Connect
+- Xcode Cloud must be enabled (App Store Connect → your app → Xcode Cloud → Get Started)
+- Your repository must be connected to App Store Connect (Integrations → Xcode Cloud → Grant GitHub access)
 
 ---
 
@@ -126,9 +148,6 @@ What it does:
 2. Logs into Apple ID (session cached for 1 hour)
 3. Finds the Xcode Cloud workflow for your app
 4. Triggers the build
----
-
-> Note: Workflow creation/editing is managed in App Store Connect UI. Apple private APIs are not reliable for CLI automation.
 
 ---
 
@@ -224,23 +243,18 @@ eba bundle-ids --register
 # One-time setup
 eba prebuild
 git add ios/ && git commit -m "chore: ci scripts" && git push
+eba workflow
 
-# Every time you want to build
+# Trigger a build manually anytime
 eba build
 ```
 
 > **Tip:** If your Xcode Cloud workflow has a **push trigger on `main`**, you don't need to run `eba build` at all.
-> Simply merge your PR into `main` on GitHub and Xcode Cloud will start the build automatically.
+> Simply merge your PR into `main` and Xcode Cloud will start the build automatically.
 > Use `eba build` when you want to re-trigger a build from the same commit — for example to retry a failed build without pushing new code.
 
 ---
 
-## Xcode Cloud Setup Guide
-
-New to Xcode Cloud? See the step-by-step guide:
-**[XCODE_CLOUD_GUIDE.md](https://github.com/kingasawa/eba-cli/blob/main/XCODE_CLOUD_GUIDE.md)**
-
----
 
 ## License
 

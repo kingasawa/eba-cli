@@ -50,7 +50,7 @@ export async function appleLogin({ allowRestore = false } = {}) {
   }
 
   // Full interactive login
-  console.log(chalk.bold('\n🍎 Apple Developer Login\n'));
+  console.log(chalk.bold('\nApple Developer Login\n'));
 
   if (lastAppleId) {
     console.log(chalk.dim(`Last used: ${lastAppleId}  (press Enter to reuse)\n`));

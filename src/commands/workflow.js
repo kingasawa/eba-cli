@@ -43,7 +43,7 @@ function getDefaultBranch() {
 
 async function autoSetupApiKey() {
   // 1. Login with Apple
-  console.log(chalk.bold('\n🍎 Logging in to Apple Developer account...\n'));
+  console.log(chalk.bold('\nLogging in to Apple Developer account...\n'));
   const baseAuthState = await appleLogin({ allowRestore: true });
   const team = await Teams.selectTeamAsync();
   console.log(chalk.dim(`Team: ${team.name} (${team.teamId})\n`));
@@ -321,8 +321,8 @@ export async function workflowCommand(options) {
         message: 'Distribution Preparation (after archive):',
         choices: [
           { name: 'None (archive only, no distribution)', value: null },
-          { name: 'TestFlight Internal Testing', value: 'TESTFLIGHT_INTERNAL_TESTING' },
-          { name: 'TestFlight External Testing', value: 'TESTFLIGHT_EXTERNAL_TESTING' },
+          { name: 'TestFlight Internal Testing', value: 'INTERNAL_ONLY' },
+          { name: 'TestFlight & External Testing', value: 'APP_STORE_ELIGIBLE' },
         ],
         default: null,
       },
@@ -387,7 +387,7 @@ export async function workflowCommand(options) {
     console.log(chalk.bold('\n✅ Workflow created successfully!\n'));
     console.log(`  ${chalk.white('Name:')}    ${workflow.attributes?.name ?? answers.workflowName}`);
     console.log(`  ${chalk.white('ID:')}      ${chalk.dim(workflow.id)}`);
-    console.log(`  ${chalk.white('Track:')}   ${chalk.underline(`https://appstoreconnect.apple.com/apps/${ascAppId}/xcode-cloud`)}\n`);
+    console.log(`  ${chalk.white('Track:')}   ${chalk.underline(`https://appstoreconnect.apple.com/teams/${creds.issuerId}/apps/${ascAppId}/ci/workflows/${workflow.id}`)}\n`);
     console.log(chalk.dim('Run "eba build" to trigger your first build.\n'));
 
   } catch (err) {
