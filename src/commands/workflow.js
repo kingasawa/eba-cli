@@ -214,40 +214,54 @@ export async function workflowCommand(options) {
       repoId = repos[idx].id;
     }
 
-    // 5. Xcode + macOS versions
+    // 5. Xcode + macOS versions — auto-pick latest, ask only if user wants to change
     console.log(chalk.dim('Fetching available Xcode versions...'));
     const xcodeVersions = await getXcodeVersions(jwt);
     const macOsVersions = await getMacOsVersions(jwt);
 
-    // Pick latest recommended by default
     const latestXcode = xcodeVersions.find(v => v.attributes?.isLatestRelease) ?? xcodeVersions[0];
     const latestMacOs = macOsVersions[0];
 
     if (!latestXcode) throw new Error('No Xcode versions available in your account.');
 
-    const { xcodeIdx } = await inquirer.prompt([{
-      type: 'list',
-      name: 'xcodeIdx',
-      message: 'Xcode version:',
-      choices: xcodeVersions.map((v, i) => ({
-        name: `${v.attributes?.version ?? v.id}${v.attributes?.isLatestRelease ? ' (latest)' : ''}`,
-        value: i,
-      })),
-      default: xcodeVersions.indexOf(latestXcode),
-    }]);
-    const xcodeVersionId = xcodeVersions[xcodeIdx].id;
+    console.log(chalk.green(`✓ Xcode: ${latestXcode.attributes?.version ?? latestXcode.id} (latest)`));
+    console.log(chalk.green(`✓ macOS: ${latestMacOs?.attributes?.version ?? latestMacOs?.id ?? 'latest'}\n`));
 
-    const { macOsIdx } = await inquirer.prompt([{
-      type: 'list',
-      name: 'macOsIdx',
-      message: 'macOS version:',
-      choices: macOsVersions.map((v, i) => ({
-        name: v.attributes?.version ?? v.id,
-        value: i,
-      })),
-      default: 0,
+    const { customizeVersions } = await inquirer.prompt([{
+      type: 'confirm',
+      name: 'customizeVersions',
+      message: 'Change Xcode/macOS version? (No = use latest recommended)',
+      default: false,
     }]);
-    const macOsVersionId = macOsVersions[macOsIdx].id;
+
+    let xcodeVersionId = latestXcode.id;
+    let macOsVersionId = latestMacOs?.id;
+
+    if (customizeVersions) {
+      const { xcodeIdx } = await inquirer.prompt([{
+        type: 'list',
+        name: 'xcodeIdx',
+        message: 'Select Xcode version:',
+        choices: xcodeVersions.map((v, i) => ({
+          name: `Xcode ${v.attributes?.version ?? v.id}${v.attributes?.isLatestRelease ? ' ← latest (recommended)' : ''}`,
+          value: i,
+        })),
+        default: xcodeVersions.indexOf(latestXcode),
+      }]);
+      xcodeVersionId = xcodeVersions[xcodeIdx].id;
+
+      const { macOsIdx } = await inquirer.prompt([{
+        type: 'list',
+        name: 'macOsIdx',
+        message: 'Select macOS version:',
+        choices: macOsVersions.map((v, i) => ({
+          name: `macOS ${v.attributes?.version ?? v.id}${i === 0 ? ' ← latest (recommended)' : ''}`,
+          value: i,
+        })),
+        default: 0,
+      }]);
+      macOsVersionId = macOsVersions[macOsIdx].id;
+    }
 
     // 6. Workflow configuration
     console.log(chalk.bold('\n📋 Workflow configuration\n'));
