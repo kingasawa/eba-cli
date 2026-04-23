@@ -133,22 +133,23 @@ export async function createCiWorkflow(jwt, {
   scheme,
   platform = 'IOS',
   clean = true,
+  containerFilePath,
   branchStartCondition = null,
   tagStartCondition = null,
   pullRequestStartCondition = null,
   manualBranchStartCondition = null,
-  postTestFlightInternalTesting = false,
 }) {
   const attributes = {
     name,
-    description: `Created by eba-cli`,
+    description: 'Created by eba-cli',
     isEnabled: true,
     isLockedForEditing: false,
     clean,
+    containerFilePath,
     actions: [
       {
         name: 'Archive',
-        actionType: 'BUILD_XCODE_CLOUD',
+        actionType: 'ARCHIVE',
         scheme,
         platform,
         isRequiredToPass: true,
@@ -156,19 +157,12 @@ export async function createCiWorkflow(jwt, {
     ],
   };
 
+  // Start conditions — patternType is NOT a valid field, use only pattern + isPrefix
   if (branchStartCondition) attributes.branchStartCondition = branchStartCondition;
   if (tagStartCondition) attributes.tagStartCondition = tagStartCondition;
   if (pullRequestStartCondition) attributes.pullRequestStartCondition = pullRequestStartCondition;
   if (manualBranchStartCondition) attributes.manualBranchStartCondition = manualBranchStartCondition;
 
-  if (postTestFlightInternalTesting) {
-    attributes.actions.push({
-      name: 'TestFlight Internal Testing',
-      actionType: 'DISTRIBUTE_TO_TESTFLIGHT',
-      isRequiredToPass: false,
-      destination: 'INTERNAL',
-    });
-  }
 
   const body = {
     data: {

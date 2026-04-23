@@ -282,6 +282,16 @@ export async function workflowCommand(options) {
         validate: v => Boolean(v.trim()) || 'Required',
       },
       {
+        type: 'input',
+        name: 'containerFilePath',
+        message: 'Path to .xcworkspace or .xcodeproj (relative to repo root):',
+        default: (() => {
+          const scheme = readDefaultScheme();
+          return scheme ? `ios/${scheme}.xcworkspace` : 'ios/MyApp.xcworkspace';
+        })(),
+        validate: v => Boolean(v.trim()) || 'Required',
+      },
+      {
         type: 'list',
         name: 'startCondition',
         message: 'When should this workflow start?',
@@ -303,19 +313,13 @@ export async function workflowCommand(options) {
       },
       {
         type: 'confirm',
-        name: 'testflight',
-        message: 'Upload to TestFlight (Internal Testing) after successful build?',
-        default: true,
-      },
-      {
-        type: 'confirm',
         name: 'cleanBuild',
         message: 'Enable clean build? (recommended)',
         default: true,
       },
     ]);
 
-    // Build start condition objects
+    // Build start condition objects — patternType is NOT valid in the API
     const branch = answers.branch ?? getDefaultBranch();
     let branchStartCondition = null;
     let tagStartCondition = null;
@@ -324,26 +328,23 @@ export async function workflowCommand(options) {
 
     if (answers.startCondition === 'branch') {
       branchStartCondition = {
-        source: { patterns: [{ pattern: branch, isPrefix: false }], patternType: 'EXACT' },
+        source: { patterns: [{ pattern: branch, isPrefix: false }] },
         autoCancel: true,
-        filesAndFoldersRule: null,
       };
     } else if (answers.startCondition === 'tag') {
       tagStartCondition = {
-        source: { patterns: [{ pattern: '*', isPrefix: true }], patternType: 'GLOB' },
+        source: { patterns: [{ pattern: '*', isPrefix: true }] },
         autoCancel: false,
-        filesAndFoldersRule: null,
       };
     } else if (answers.startCondition === 'pr') {
       pullRequestStartCondition = {
-        source: { patterns: [{ pattern: '*', isPrefix: true }], patternType: 'GLOB' },
-        destination: { patterns: [{ pattern: branch, isPrefix: false }], patternType: 'EXACT' },
+        source: { patterns: [{ pattern: '*', isPrefix: true }] },
+        destination: { patterns: [{ pattern: branch, isPrefix: false }] },
         autoCancel: true,
-        filesAndFoldersRule: null,
       };
     } else {
       manualBranchStartCondition = {
-        source: { patterns: [{ pattern: branch, isPrefix: false }], patternType: 'EXACT' },
+        source: { patterns: [{ pattern: branch, isPrefix: false }] },
       };
     }
 
@@ -357,12 +358,12 @@ export async function workflowCommand(options) {
       macOsVersionId,
       name: answers.workflowName,
       scheme: answers.scheme,
+      containerFilePath: answers.containerFilePath,
       clean: answers.cleanBuild,
       branchStartCondition,
       tagStartCondition,
       pullRequestStartCondition,
       manualBranchStartCondition,
-      postTestFlightInternalTesting: answers.testflight,
     });
 
     if (!workflow) throw new Error('Workflow created but no data returned.');
