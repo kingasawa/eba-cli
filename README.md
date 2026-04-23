@@ -16,7 +16,7 @@ Hit the **EAS free build limit** (15 builds/month)? `eba-cli` lets you trigger b
 |---|-------------------------|---|
 | iOS builds | 15 builds/month         | ~75–100 builds/month* |
 | Cost | Free → paid after limit | Free with Apple Developer ($99/yr) |
-| Setup required | None                    | One-time setup |
+| Setup required | None                    | One-time CLI setup (`eba workflow`) |
 | Customization | Limited                 | Full control via ci_scripts |
 
 *Based on ~15 min average build time within 25 compute hours/month.
