@@ -59,8 +59,9 @@ program
 
 program
   .command('workflow')
-  .description('Guided workflow setup — collects config and opens App Store Connect')
+  .description('Create an Xcode Cloud workflow via App Store Connect API')
   .option('-e, --env <environment>', 'Environment from eas.json', 'production')
+  .option('--setup', 'Auto-configure API key via Apple login (run once)')
   .action(workflowCommand);
 
 program.parse(process.argv);

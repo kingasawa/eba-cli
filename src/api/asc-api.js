@@ -41,7 +41,7 @@ export function generateJwt({ issuerId, keyId, privateKey }) {
 
 // ─── Credentials store ────────────────────────────────────────────────────────
 
-const CREDS_FILE = join(homedir(), '.eba-cli', 'asc-api-key.json');
+const CREDS_FILE = join(homedir(), '.eba-cli', 'eba-workflow.json');
 
 export function loadApiKeyCreds() {
   try {
@@ -62,6 +62,8 @@ export function saveApiKeyCreds({ issuerId, keyId, privateKeyPath }) {
   mkdirSync(dir, { recursive: true });
   writeFileSync(CREDS_FILE, JSON.stringify({ issuerId, keyId, privateKeyPath }, null, 2));
 }
+
+export function getCredsFilePath() { return CREDS_FILE; }
 
 // ─── HTTP client ──────────────────────────────────────────────────────────────
 

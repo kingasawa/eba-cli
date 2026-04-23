@@ -1,14 +1,20 @@
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { resolve } from 'path';
 import { execFileSync } from 'child_process';
+import { homedir } from 'os';
+import { join } from 'path';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
+import pkg from '@expo/apple-utils';
+import { appleLogin } from '../auth/apple.js';
 import {
-  loadApiKeyCreds, saveApiKeyCreds, generateJwt,
+  loadApiKeyCreds, saveApiKeyCreds, generateJwt, getCredsFilePath,
   getCiProduct, getScmRepositories,
   getXcodeVersions, getMacOsVersions,
   createCiWorkflow,
 } from '../api/asc-api.js';
+
+const { Keys, Teams } = pkg;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -33,86 +39,111 @@ function getDefaultBranch() {
   } catch { return 'main'; }
 }
 
-// ─── API Key setup ────────────────────────────────────────────────────────────
+// ─── Auto-setup API key via Apple login ───────────────────────────────────────
 
-async function ensureApiKeyCreds() {
-  let creds = loadApiKeyCreds();
+async function autoSetupApiKey() {
+  console.log(chalk.bold('\n🍎 Logging in to Apple Developer account...\n'));
+  const baseAuthState = await appleLogin({ allowRestore: true });
+
+  const team = await Teams.selectTeamAsync();
+  console.log(chalk.dim(`Team: ${team.name} (${team.teamId})\n`));
+  const authState = { ...baseAuthState, teamId: team.teamId };
+
+  // Try to get existing issuer ID from existing keys
+  let issuerId = null;
+  let existingKeys = [];
+  try {
+    existingKeys = await Keys.getKeysAsync(authState) ?? [];
+    // Issuer ID is account-level, try to read from first key's attributes
+    const first = existingKeys[0];
+    issuerId = first?.attributes?.issuerId ?? null;
+    if (issuerId) console.log(chalk.dim(`Issuer ID detected: ${issuerId}`));
+  } catch { /* ignore */ }
+
+  // Create new API key
+  console.log(chalk.dim('\nCreating App Store Connect API key...\n'));
+  let newKey;
+  try {
+    newKey = await Keys.createKeyAsync(authState, {
+      name: 'eba-cli',
+      allAppsVisible: true,
+      isActive: true,
+    });
+  } catch (err) {
+    throw new Error(`Failed to create API key: ${err.message}\nYou may need Admin role.`);
+  }
+
+  const keyId = newKey?.id ?? newKey?.attributes?.keyId;
+  if (!keyId) throw new Error('API key created but Key ID not returned.');
+  console.log(chalk.green(`✓ API key created: ${keyId}`));
+
+  // Download private key (.p8 content)
+  console.log(chalk.dim('Downloading private key...'));
+  let privateKeyContent;
+  try {
+    privateKeyContent = await Keys.downloadKeyAsync(authState, { id: keyId });
+  } catch (err) {
+    throw new Error(`Failed to download private key: ${err.message}`);
+  }
+  if (!privateKeyContent) throw new Error('Private key download returned empty content.');
+
+  // Save .p8 file
+  const keysDir = join(homedir(), '.eba-cli', 'keys');
+  mkdirSync(keysDir, { recursive: true });
+  const privateKeyPath = join(keysDir, `AuthKey_${keyId}.p8`);
+  writeFileSync(privateKeyPath, privateKeyContent, 'utf8');
+  console.log(chalk.green(`✓ Private key saved: ${privateKeyPath}`));
+
+  // If issuer ID not detected, prompt user
+  if (!issuerId) {
+    console.log(chalk.yellow('\n⚠ Could not auto-detect Issuer ID.'));
+    console.log(chalk.dim('  Find it at: App Store Connect → Users and Access → Integrations → App Store Connect API'));
+    console.log(chalk.dim('  It is shown at the top of the page (UUID format)\n'));
+    const { inputIssuerId } = await inquirer.prompt([{
+      type: 'input',
+      name: 'inputIssuerId',
+      message: 'Issuer ID:',
+      validate: v => Boolean(v.trim()) || 'Required',
+    }]);
+    issuerId = inputIssuerId.trim();
+  }
+
+  // Save to eba-workflow.json
+  saveApiKeyCreds({ issuerId, keyId, privateKeyPath });
+  console.log(chalk.green(`\n✓ Credentials saved to ${getCredsFilePath()}\n`));
+
+  return {
+    issuerId,
+    keyId,
+    privateKey: privateKeyContent,
+  };
+}
+
+// ─── Ensure API key creds (check file or auto-setup) ──────────────────────────
+
+async function ensureApiKeyCreds(setupMode = false) {
+  const creds = loadApiKeyCreds();
+
   if (creds) {
-    console.log(chalk.dim(`Using saved API key: ${creds.keyId}\n`));
+    console.log(chalk.green(`✓ Found existing credentials (${getCredsFilePath()})`));
+    console.log(chalk.dim(`  Key ID: ${creds.keyId}  |  Issuer: ${creds.issuerId}\n`));
     return creds;
   }
 
-  console.log(chalk.bold('\n🔑 App Store Connect API Key required\n'));
-  console.log(chalk.dim('  Follow these steps to create a key:\n'));
-  console.log(chalk.dim('  1. Go to: https://appstoreconnect.apple.com/access/integrations/api'));
-  console.log(chalk.dim('  2. Click "Generate API Key" (or "+" button)'));
-  console.log(chalk.dim('  3. Give it a name, set Role to "Developer" or "Admin"'));
-  console.log(chalk.dim('  4. Download the .p8 file (only available once!)'));
-  console.log(chalk.dim('  5. Note the Issuer ID (top of the page) and Key ID\n'));
-
-  // Open browser to the API keys page
-  try {
-    const cmd = process.platform === 'win32' ? 'start' :
-      process.platform === 'darwin' ? 'open' : 'xdg-open';
-    const { execFileSync } = await import('child_process');
-    execFileSync(cmd, ['https://appstoreconnect.apple.com/access/integrations/api'],
-      { shell: process.platform === 'win32' });
-    console.log(chalk.green('  ✓ Opened App Store Connect in your browser\n'));
-  } catch {}
-
-  const { ready } = await inquirer.prompt([{
-    type: 'confirm',
-    name: 'ready',
-    message: 'Have you downloaded the .p8 file and noted the Issuer ID + Key ID?',
-    default: false,
-  }]);
-  if (!ready) {
-    console.log(chalk.dim('\nRun "eba workflow" again when ready.\n'));
-    process.exit(0);
+  if (!setupMode) {
+    console.log(chalk.yellow('⚠ No credentials found. Run "eba workflow --setup" to auto-configure.\n'));
+    process.exit(1);
   }
-  console.log('');
 
-  const { issuerId, keyId, privateKeyPath } = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'issuerId',
-      message: 'Issuer ID (from App Store Connect → Keys page):',
-      validate: v => Boolean(v.trim()) || 'Required',
-    },
-    {
-      type: 'input',
-      name: 'keyId',
-      message: 'Key ID:',
-      validate: v => Boolean(v.trim()) || 'Required',
-    },
-    {
-      type: 'input',
-      name: 'privateKeyPath',
-      message: 'Path to .p8 private key file:',
-      default: `~/Downloads/AuthKey_KEYID.p8`,
-      validate: v => {
-        const p = v.trim().replace(/^~/, process.env.HOME ?? '');
-        return existsSync(p) ? true : `File not found: ${p}`;
-      },
-    },
-  ]);
-
-  const normalizedPath = privateKeyPath.trim().replace(/^~/, process.env.HOME ?? '');
-  saveApiKeyCreds({ issuerId: issuerId.trim(), keyId: keyId.trim(), privateKeyPath: normalizedPath });
-
-  console.log(chalk.green('\n✓ API key saved to ~/.eba-cli/asc-api-key.json\n'));
-
-  return {
-    issuerId: issuerId.trim(),
-    keyId: keyId.trim(),
-    privateKey: readFileSync(normalizedPath, 'utf8'),
-  };
+  // Auto-setup via Apple login
+  return autoSetupApiKey();
 }
 
 // ─── Command ──────────────────────────────────────────────────────────────────
 
 export async function workflowCommand(options) {
   const env = options.env ?? 'production';
+  const setupMode = Boolean(options.setup);
 
   try {
     // 1. Get App ID
@@ -131,7 +162,7 @@ export async function workflowCommand(options) {
     }
 
     // 2. Get / setup API key
-    const creds = await ensureApiKeyCreds();
+    const creds = await ensureApiKeyCreds(setupMode);
     const jwt = generateJwt(creds);
 
     // 3. Find CI product
