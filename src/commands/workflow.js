@@ -1,20 +1,14 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import { execFileSync } from 'child_process';
-import { homedir } from 'os';
-import { join } from 'path';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
-import pkg from '@expo/apple-utils';
-import { appleLogin } from '../auth/apple.js';
 import {
   loadApiKeyCreds, saveApiKeyCreds, generateJwt, getCredsFilePath,
   getCiProduct, getScmRepositories,
   getXcodeVersions, getMacOsVersions,
   createCiWorkflow,
 } from '../api/asc-api.js';
-
-const { Keys, Teams } = pkg;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -42,87 +36,76 @@ function getDefaultBranch() {
 // ─── Auto-setup API key via Apple login ───────────────────────────────────────
 
 async function autoSetupApiKey() {
-  console.log(chalk.bold('\n🍎 Logging in to Apple Developer account...\n'));
-  const baseAuthState = await appleLogin({ allowRestore: true });
+  console.log(chalk.bold('\n🔑 App Store Connect API Key Setup\n'));
 
-  const team = await Teams.selectTeamAsync();
-  console.log(chalk.dim(`Team: ${team.name} (${team.teamId})\n`));
-  const authState = { ...baseAuthState, teamId: team.teamId };
-
-  // Try to get existing issuer ID from existing keys
-  let issuerId = null;
-  let existingKeys = [];
+  // Open browser to ASC API Keys page
+  const url = 'https://appstoreconnect.apple.com/access/integrations/api';
+  console.log(chalk.dim('  Opening App Store Connect → Users and Access → Integrations → API Keys...\n'));
   try {
-    existingKeys = await Keys.getKeysAsync(authState) ?? [];
-    // Issuer ID is account-level, try to read from first key's attributes
-    const first = existingKeys[0];
-    issuerId = first?.attributes?.issuerId ?? null;
-    if (issuerId) console.log(chalk.dim(`Issuer ID detected: ${issuerId}`));
-  } catch { /* ignore */ }
+    const cmd = process.platform === 'win32' ? 'start' :
+      process.platform === 'darwin' ? 'open' : 'xdg-open';
+    execFileSync(cmd, [url], { shell: process.platform === 'win32' });
+  } catch {}
 
-  // Create new API key
-  console.log(chalk.dim('\nCreating App Store Connect API key...\n'));
-  let newKey;
-  try {
-    newKey = await Keys.createKeyAsync(authState, {
-      name: 'eba-cli',
-      allAppsVisible: true,
-      isActive: true,
-      serviceConfigurations: [
-        {
-          serviceType: 'APP_STORE_CONNECT_API',
-          roles: ['ADMIN'],
-          allAppsVisible: true,
-        },
-      ],
-    });
-  } catch (err) {
-    throw new Error(`Failed to create API key: ${err.message}`);
+  console.log(chalk.bold('  Steps to create a key:\n'));
+  console.log(chalk.dim('  1. Click the "+" button (or "Generate API Key")'));
+  console.log(chalk.dim('  2. Name: eba-cli  |  Role: Admin'));
+  console.log(chalk.dim('  3. Click Generate → Download the .p8 file (only available once!)'));
+  console.log(chalk.dim('  4. Note the Issuer ID shown at the top of the page'));
+  console.log(chalk.dim('  5. Note the Key ID shown in the key list\n'));
+
+  const { ready } = await inquirer.prompt([{
+    type: 'confirm',
+    name: 'ready',
+    message: 'Downloaded the .p8 file and have the Issuer ID + Key ID ready?',
+    default: false,
+  }]);
+
+  if (!ready) {
+    console.log(chalk.dim('\nRun "eba workflow --setup" again when ready.\n'));
+    process.exit(0);
   }
 
-  const keyId = newKey?.id ?? newKey?.attributes?.keyId;
-  if (!keyId) throw new Error('API key created but Key ID not returned.');
-  console.log(chalk.green(`✓ API key created: ${keyId}`));
-
-  // Download private key (.p8 content)
-  console.log(chalk.dim('Downloading private key...'));
-  let privateKeyContent;
-  try {
-    privateKeyContent = await Keys.downloadKeyAsync(authState, { id: keyId });
-  } catch (err) {
-    throw new Error(`Failed to download private key: ${err.message}`);
-  }
-  if (!privateKeyContent) throw new Error('Private key download returned empty content.');
-
-  // Save .p8 file
-  const keysDir = join(homedir(), '.eba-cli', 'keys');
-  mkdirSync(keysDir, { recursive: true });
-  const privateKeyPath = join(keysDir, `AuthKey_${keyId}.p8`);
-  writeFileSync(privateKeyPath, privateKeyContent, 'utf8');
-  console.log(chalk.green(`✓ Private key saved: ${privateKeyPath}`));
-
-  // If issuer ID not detected, prompt user
-  if (!issuerId) {
-    console.log(chalk.yellow('\n⚠ Could not auto-detect Issuer ID.'));
-    console.log(chalk.dim('  Find it at: App Store Connect → Users and Access → Integrations → App Store Connect API'));
-    console.log(chalk.dim('  It is shown at the top of the page (UUID format)\n'));
-    const { inputIssuerId } = await inquirer.prompt([{
+  const { issuerId, keyId, privateKeyPath } = await inquirer.prompt([
+    {
       type: 'input',
-      name: 'inputIssuerId',
-      message: 'Issuer ID:',
+      name: 'issuerId',
+      message: 'Issuer ID (UUID at top of the Keys page):',
       validate: v => Boolean(v.trim()) || 'Required',
-    }]);
-    issuerId = inputIssuerId.trim();
-  }
+    },
+    {
+      type: 'input',
+      name: 'keyId',
+      message: 'Key ID (shown in key list):',
+      validate: v => Boolean(v.trim()) || 'Required',
+    },
+    {
+      type: 'input',
+      name: 'privateKeyPath',
+      message: 'Path to the downloaded .p8 file:',
+      default: `~/Downloads/AuthKey_${'{KEY_ID}'}.p8`,
+      validate: v => {
+        const p = v.trim().replace(/^~/, process.env.HOME ?? process.env.USERPROFILE ?? '');
+        return existsSync(p) ? true : `File not found: ${p}`;
+      },
+    },
+  ]);
 
-  // Save to eba-workflow.json
-  saveApiKeyCreds({ issuerId, keyId, privateKeyPath });
+  const normalizedPath = privateKeyPath.trim()
+    .replace(/^~/, process.env.HOME ?? process.env.USERPROFILE ?? '');
+
+  saveApiKeyCreds({
+    issuerId: issuerId.trim(),
+    keyId: keyId.trim(),
+    privateKeyPath: normalizedPath,
+  });
+
   console.log(chalk.green(`\n✓ Credentials saved to ${getCredsFilePath()}\n`));
 
   return {
-    issuerId,
-    keyId,
-    privateKey: privateKeyContent,
+    issuerId: issuerId.trim(),
+    keyId: keyId.trim(),
+    privateKey: readFileSync(normalizedPath, 'utf8'),
   };
 }
 
