@@ -1,10 +1,12 @@
 # eba-cli
 
-> **For Expo developers who have hit the EAS free build limit.**
+[![npm version](https://img.shields.io/npm/v/eba-cli.svg)](https://www.npmjs.com/package/eba-cli)
+[![npm downloads](https://img.shields.io/npm/dm/eba-cli.svg)](https://www.npmjs.com/package/eba-cli)
+[![license](https://img.shields.io/npm/l/eba-cli.svg)](LICENSE)
 
-If you're using **Expo EAS** and have run out of free iOS build credits (15 builds/month), `eba-cli` lets you trigger builds directly on **Xcode Cloud** — Apple's own CI/CD service, included free with an Apple Developer account (25 compute hours/month).
+> **Xcode Cloud CLI for Expo & React Native — trigger iOS builds, manage devices, certificates and profiles without opening a browser.**
 
-No more waiting to buy more EAS credits. Your app, your infrastructure.
+Hit the **EAS free build limit** (15 builds/month)? `eba-cli` lets you trigger builds on **Xcode Cloud** — Apple's CI/CD service bundled free with your Apple Developer account (25 compute hours ≈ 75–100 builds/month).
 
 ---
 
