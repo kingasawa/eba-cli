@@ -204,7 +204,7 @@ eba build
 
 > **Tip:** If your Xcode Cloud workflow has a **push trigger on `main`**, you don't need to run `eba build` at all.
 > Simply merge your PR into `main` on GitHub and Xcode Cloud will start the build automatically.
-> Use `eba build` only when you want to trigger a build manually without pushing code.
+> Use `eba build` when you want to re-trigger a build from the same commit — for example to retry a failed build without pushing new code.
 
 ---
 
