@@ -3,6 +3,12 @@ import { resolve } from 'path';
 import { execFileSync } from 'child_process';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
+import {
+  loadApiKeyCreds, saveApiKeyCreds, generateJwt,
+  getCiProduct, getScmRepositories,
+  getXcodeVersions, getMacOsVersions,
+  createCiWorkflow,
+} from '../api/asc-api.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -27,14 +33,54 @@ function getDefaultBranch() {
   } catch { return 'main'; }
 }
 
-function openBrowser(url) {
-  try {
-    const cmd = process.platform === 'win32' ? 'start' :
-      process.platform === 'darwin' ? 'open' : 'xdg-open';
-    execFileSync(cmd, [url], { shell: process.platform === 'win32' });
-  } catch {
-    // silently ignore — URL is already printed to terminal
+// ─── API Key setup ────────────────────────────────────────────────────────────
+
+async function ensureApiKeyCreds() {
+  let creds = loadApiKeyCreds();
+  if (creds) {
+    console.log(chalk.dim(`Using saved API key: ${creds.keyId}\n`));
+    return creds;
   }
+
+  console.log(chalk.bold('\n🔑 App Store Connect API Key required\n'));
+  console.log(chalk.dim('To create a key: App Store Connect → Users and Access → Integrations → App Store Connect API → Generate API Key'));
+  console.log(chalk.dim('Role required: Developer or Admin\n'));
+
+  const { issuerId, keyId, privateKeyPath } = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'issuerId',
+      message: 'Issuer ID (from App Store Connect → Keys page):',
+      validate: v => Boolean(v.trim()) || 'Required',
+    },
+    {
+      type: 'input',
+      name: 'keyId',
+      message: 'Key ID:',
+      validate: v => Boolean(v.trim()) || 'Required',
+    },
+    {
+      type: 'input',
+      name: 'privateKeyPath',
+      message: 'Path to .p8 private key file:',
+      default: `~/Downloads/AuthKey_KEYID.p8`,
+      validate: v => {
+        const p = v.trim().replace(/^~/, process.env.HOME ?? '');
+        return existsSync(p) ? true : `File not found: ${p}`;
+      },
+    },
+  ]);
+
+  const normalizedPath = privateKeyPath.trim().replace(/^~/, process.env.HOME ?? '');
+  saveApiKeyCreds({ issuerId: issuerId.trim(), keyId: keyId.trim(), privateKeyPath: normalizedPath });
+
+  console.log(chalk.green('\n✓ API key saved to ~/.eba-cli/asc-api-key.json\n'));
+
+  return {
+    issuerId: issuerId.trim(),
+    keyId: keyId.trim(),
+    privateKey: readFileSync(normalizedPath, 'utf8'),
+  };
 }
 
 // ─── Command ──────────────────────────────────────────────────────────────────
@@ -43,10 +89,9 @@ export async function workflowCommand(options) {
   const env = options.env ?? 'production';
 
   try {
-    // 1. Read app ID
+    // 1. Get App ID
     let ascAppId = null;
     try { ascAppId = readAscAppId(env); } catch {}
-
     if (!ascAppId) {
       const { id } = await inquirer.prompt([{
         type: 'input',
@@ -56,12 +101,88 @@ export async function workflowCommand(options) {
       }]);
       ascAppId = id.trim();
     } else {
-      console.log(chalk.dim(`Using App ID from eas.json: ${ascAppId}\n`));
+      console.log(chalk.dim(`App ID from eas.json: ${ascAppId}\n`));
     }
 
-    // 2. Collect workflow configuration
+    // 2. Get / setup API key
+    const creds = await ensureApiKeyCreds();
+    const jwt = generateJwt(creds);
+
+    // 3. Find CI product
+    console.log(chalk.dim('Looking up Xcode Cloud product...'));
+    const product = await getCiProduct(jwt, ascAppId);
+    if (!product) {
+      throw new Error(
+        `No Xcode Cloud product found for app ${ascAppId}.\n` +
+        '  Go to App Store Connect → your app → Xcode Cloud → Get Started first.'
+      );
+    }
+    console.log(chalk.green(`✓ Xcode Cloud product: ${product.attributes?.name ?? product.id}`));
+
+    // 4. Find repository
+    console.log(chalk.dim('Fetching connected repositories...'));
+    const repos = await getScmRepositories(jwt);
+    if (!repos.length) {
+      throw new Error(
+        'No repositories connected to App Store Connect.\n' +
+        '  Connect your GitHub/Bitbucket/GitLab repo in App Store Connect → Xcode Cloud first.'
+      );
+    }
+
+    let repoId;
+    if (repos.length === 1) {
+      repoId = repos[0].id;
+      console.log(chalk.green(`✓ Repository: ${repos[0].attributes?.repositoryName ?? repos[0].id}`));
+    } else {
+      const { idx } = await inquirer.prompt([{
+        type: 'list',
+        name: 'idx',
+        message: 'Select repository:',
+        choices: repos.map((r, i) => ({
+          name: `${r.attributes?.ownerName ?? ''}/${r.attributes?.repositoryName ?? r.id}`,
+          value: i,
+        })),
+      }]);
+      repoId = repos[idx].id;
+    }
+
+    // 5. Xcode + macOS versions
+    console.log(chalk.dim('Fetching available Xcode versions...'));
+    const xcodeVersions = await getXcodeVersions(jwt);
+    const macOsVersions = await getMacOsVersions(jwt);
+
+    // Pick latest recommended by default
+    const latestXcode = xcodeVersions.find(v => v.attributes?.isLatestRelease) ?? xcodeVersions[0];
+    const latestMacOs = macOsVersions[0];
+
+    if (!latestXcode) throw new Error('No Xcode versions available in your account.');
+
+    const { xcodeIdx } = await inquirer.prompt([{
+      type: 'list',
+      name: 'xcodeIdx',
+      message: 'Xcode version:',
+      choices: xcodeVersions.map((v, i) => ({
+        name: `${v.attributes?.version ?? v.id}${v.attributes?.isLatestRelease ? ' (latest)' : ''}`,
+        value: i,
+      })),
+      default: xcodeVersions.indexOf(latestXcode),
+    }]);
+    const xcodeVersionId = xcodeVersions[xcodeIdx].id;
+
+    const { macOsIdx } = await inquirer.prompt([{
+      type: 'list',
+      name: 'macOsIdx',
+      message: 'macOS version:',
+      choices: macOsVersions.map((v, i) => ({
+        name: v.attributes?.version ?? v.id,
+        value: i,
+      })),
+      default: 0,
+    }]);
+    const macOsVersionId = macOsVersions[macOsIdx].id;
+
+    // 6. Workflow configuration
     console.log(chalk.bold('\n📋 Workflow configuration\n'));
-    console.log(chalk.dim('Answer a few questions — then we\'ll open App Store Connect\nand show you exactly what to fill in.\n'));
 
     const answers = await inquirer.prompt([
       {
@@ -83,7 +204,7 @@ export async function workflowCommand(options) {
         name: 'startCondition',
         message: 'When should this workflow start?',
         choices: [
-          { name: 'Manually (trigger via eba build or App Store Connect)', value: 'manual' },
+          { name: 'Manually only', value: 'manual' },
           { name: 'On push to a branch', value: 'branch' },
           { name: 'On pull request', value: 'pr' },
           { name: 'On git tag', value: 'tag' },
@@ -99,15 +220,10 @@ export async function workflowCommand(options) {
         validate: v => Boolean(v.trim()) || 'Required',
       },
       {
-        type: 'list',
-        name: 'postAction',
-        message: 'What to do after a successful build?',
-        choices: [
-          { name: 'Nothing', value: 'none' },
-          { name: 'Upload to TestFlight (Internal Testing)', value: 'testflight_internal' },
-          { name: 'Upload to TestFlight (External Testing)', value: 'testflight_external' },
-        ],
-        default: 'testflight_internal',
+        type: 'confirm',
+        name: 'testflight',
+        message: 'Upload to TestFlight (Internal Testing) after successful build?',
+        default: true,
       },
       {
         type: 'confirm',
@@ -117,56 +233,63 @@ export async function workflowCommand(options) {
       },
     ]);
 
-    // 3. Build checklist
+    // Build start condition objects
     const branch = answers.branch ?? getDefaultBranch();
-    const startConditionLabel = {
-      manual: 'Manual',
-      branch: `Push to branch: ${branch}`,
-      pr: 'Pull request',
-      tag: 'Git tag',
-    }[answers.startCondition];
+    let branchStartCondition = null;
+    let tagStartCondition = null;
+    let pullRequestStartCondition = null;
+    let manualBranchStartCondition = null;
 
-    const postActionLabel = {
-      none: 'None',
-      testflight_internal: 'TestFlight — Internal Testing',
-      testflight_external: 'TestFlight — External Testing',
-    }[answers.postAction];
+    if (answers.startCondition === 'branch') {
+      branchStartCondition = {
+        source: { patterns: [{ pattern: branch, isPrefix: false }], patternType: 'EXACT' },
+        autoCancel: true,
+        filesAndFoldersRule: null,
+      };
+    } else if (answers.startCondition === 'tag') {
+      tagStartCondition = {
+        source: { patterns: [{ pattern: '*', isPrefix: true }], patternType: 'GLOB' },
+        autoCancel: false,
+        filesAndFoldersRule: null,
+      };
+    } else if (answers.startCondition === 'pr') {
+      pullRequestStartCondition = {
+        source: { patterns: [{ pattern: '*', isPrefix: true }], patternType: 'GLOB' },
+        destination: { patterns: [{ pattern: branch, isPrefix: false }], patternType: 'EXACT' },
+        autoCancel: true,
+        filesAndFoldersRule: null,
+      };
+    } else {
+      manualBranchStartCondition = {
+        source: { patterns: [{ pattern: branch, isPrefix: false }], patternType: 'EXACT' },
+      };
+    }
 
-    // 4. Print summary + checklist
-    const url = `https://appstoreconnect.apple.com/apps/${ascAppId}/xcode-cloud`;
+    // 7. Create workflow
+    console.log(chalk.dim('\nCreating workflow via App Store Connect API...\n'));
 
-    console.log(chalk.bold('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'));
-    console.log(chalk.bold('🌐 Opening App Store Connect...\n'));
-    console.log(chalk.dim(`  ${url}\n`));
-    console.log(chalk.bold('📝 Fill in the following when creating the workflow:\n'));
-
-    const fields = [
-      ['Workflow name',    chalk.white(answers.workflowName)],
-      ['Xcode version',    chalk.white('Latest Release (recommended)')],
-      ['Clean build',      answers.cleanBuild ? chalk.green('✓ Enabled') : chalk.dim('Disabled')],
-      ['Start condition',  chalk.white(startConditionLabel)],
-      ['Archive scheme',   chalk.white(answers.scheme)],
-      ['Post-build action',chalk.white(postActionLabel)],
-    ];
-
-    const labelWidth = Math.max(...fields.map(([l]) => l.length)) + 2;
-    fields.forEach(([label, value]) => {
-      console.log(`  ${chalk.dim((label + ':').padEnd(labelWidth))} ${value}`);
+    const workflow = await createCiWorkflow(jwt, {
+      productId: product.id,
+      repositoryId: repoId,
+      xcodeVersionId,
+      macOsVersionId,
+      name: answers.workflowName,
+      scheme: answers.scheme,
+      clean: answers.cleanBuild,
+      branchStartCondition,
+      tagStartCondition,
+      pullRequestStartCondition,
+      manualBranchStartCondition,
+      postTestFlightInternalTesting: answers.testflight,
     });
 
-    console.log('');
-    console.log(chalk.dim('Steps in App Store Connect:'));
-    console.log(chalk.dim('  1. Click "Manage Workflows" → "+" to add a new workflow'));
-    console.log(chalk.dim('  2. Fill in the fields above'));
-    console.log(chalk.dim('  3. Under Archive → select your scheme'));
-    if (answers.postAction !== 'none') {
-      console.log(chalk.dim('  4. Under Post-Actions → add TestFlight delivery'));
-    }
-    console.log(chalk.dim('  5. Save → then run: eba build\n'));
+    if (!workflow) throw new Error('Workflow created but no data returned.');
 
-    console.log(chalk.bold('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'));
-
-    openBrowser(url);
+    console.log(chalk.bold('\n✅ Workflow created successfully!\n'));
+    console.log(`  ${chalk.white('Name:')}    ${workflow.attributes?.name ?? answers.workflowName}`);
+    console.log(`  ${chalk.white('ID:')}      ${chalk.dim(workflow.id)}`);
+    console.log(`  ${chalk.white('Track:')}   ${chalk.underline(`https://appstoreconnect.apple.com/apps/${ascAppId}/xcode-cloud`)}\n`);
+    console.log(chalk.dim('Run "eba build" to trigger your first build.\n'));
 
   } catch (err) {
     console.error(chalk.red(`\n✗ ${err.message}\n`));
