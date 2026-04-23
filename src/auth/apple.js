@@ -5,7 +5,7 @@ import { homedir } from 'os';
 import { join } from 'path';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 
-const { Auth } = pkg;
+const { Auth, Teams } = pkg;
 
 // ─── Config (~/.eba-cli/config.json) ─────────────────────────────────────────
 
@@ -36,15 +36,14 @@ export async function appleLogin({ allowRestore = false } = {}) {
   const config = loadConfig();
   const lastLoginTime = config.lastLoginTime ?? 0;
   const lastAppleId = config.lastAppleId ?? '';
-  const lastPassword = config.lastPassword ?? '';
   const sessionAge = Date.now() - lastLoginTime;
 
   // Silent restore if session is < 1h old
   if (allowRestore && lastAppleId && sessionAge < ONE_HOUR) {
     try {
-      await Auth.loginAsync({ username: lastAppleId, cookies: true });
+      const authState = await Auth.loginAsync({ username: lastAppleId, cookies: true });
       console.log(chalk.dim(`Session restored for ${lastAppleId} (expires in ${Math.round((ONE_HOUR - sessionAge) / 60000)}m)`));
-      return;
+      return authState;
     } catch {
       console.log(chalk.dim('Cached session expired, please log in again.'));
     }
@@ -70,15 +69,57 @@ export async function appleLogin({ allowRestore = false } = {}) {
       name: 'password',
       message: 'Password:',
       mask: '*',
-      default: lastPassword || undefined,
     },
   ]);
 
   console.log(chalk.dim('\nConnecting to Apple...\n'));
 
-  await Auth.loginAsync({ username: appleId, password });
+  const authState = await Auth.loginAsync({ username: appleId, password });
 
-  saveConfig({ ...config, lastAppleId: appleId, lastPassword: password, lastLoginTime: Date.now() });
+  saveConfig({ ...config, lastAppleId: appleId, lastLoginTime: Date.now() });
 
   console.log(chalk.green(`\n✓ Signed in as ${appleId}`));
+
+  return authState;
+}
+
+/**
+ * Login + select team → return team-scoped authState.
+ * Team selection is cached for 1 hour alongside the Apple ID session.
+ * Returns { authState, team }
+ */
+export async function appleLoginWithTeam({ allowRestore = true } = {}) {
+  const config = loadConfig();
+  const lastAppleId = config.lastAppleId ?? '';
+  const cachedTeamId = config.lastTeamId ?? '';
+  const cachedTeamName = config.lastTeamName ?? '';
+  const sessionAge = Date.now() - (config.lastLoginTime ?? 0);
+  const sessionFresh = allowRestore && lastAppleId && sessionAge < ONE_HOUR;
+
+  // Step 1: get initial auth state
+  const baseAuthState = await appleLogin({ allowRestore });
+
+  // Step 2: select team — skip prompt if session fresh and team cached
+  let team;
+  if (sessionFresh && cachedTeamId) {
+    try {
+      team = await Teams.selectTeamAsync({ teamId: cachedTeamId });
+      console.log(chalk.dim(`Team: ${team.name} (${team.teamId})\n`));
+    } catch {
+      // cached team no longer valid, fall through to prompt
+      team = null;
+    }
+  }
+
+  if (!team) {
+    team = await Teams.selectTeamAsync();
+    console.log(chalk.dim(`Team: ${team.name} (${team.teamId})\n`));
+    // Save team alongside session
+    saveConfig({ ...loadConfig(), lastTeamId: team.teamId, lastTeamName: team.name });
+  }
+
+  // Step 3: inject teamId into authState — Developer Portal APIs check authState.teamId directly
+  const authState = { ...baseAuthState, teamId: team.teamId };
+
+  return { authState, team };
 }

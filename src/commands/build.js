@@ -5,41 +5,14 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 import pkg from '@expo/apple-utils';
 import { appleLogin } from '../auth/apple.js';
+import {
+  findCiProductByAppId,
+  listWorkflows,
+  triggerBuildRun,
+  getAscAppPageUrl,
+} from '../api/asc.js';
 
-const { Teams, CookieFileCache } = pkg;
-
-const ASC = 'https://appstoreconnect.apple.com';
-
-// ─── Cookie-based fetch for App Store Connect ─────────────────────────────────
-
-function getSessionCookieHeader() {
-  const { cookies } = CookieFileCache.getCookiesJSON();
-  if (!cookies?.length) throw new Error('No session cookies found. Please login again.');
-  return cookies.map(c => `${c.key}=${c.value}`).join('; ');
-}
-
-async function ascFetch(path, { method = 'GET', body } = {}) {
-  const cookieHeader = getSessionCookieHeader();
-
-  const res = await fetch(`${ASC}${path}`, {
-    method,
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      Cookie: cookieHeader,
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`App Store Connect API error ${res.status}: ${text}`);
-  }
-
-  const contentType = res.headers.get('content-type') ?? '';
-  if (!contentType.includes('application/json')) return null;
-  return res.json();
-}
+const { Teams } = pkg;
 
 // ─── Build command ────────────────────────────────────────────────────────────
 
@@ -50,13 +23,26 @@ export async function buildCommand(options) {
     // 1. Read eas.json
     const configPath = resolve(process.cwd(), 'eas.json');
     if (!existsSync(configPath)) {
-      console.error(chalk.red('\n✗ eas.json not found. Add ascAppId to your eas.json build profile.\n'));
+      console.error(chalk.red('\n✗ eas.json not found. Add ascAppId to your eas.json submit or build profile.\n'));
       process.exit(1);
     }
     const easConfig = JSON.parse(readFileSync(configPath, 'utf8'));
-    const ascAppId = easConfig.build?.[env]?.ios?.ascAppId;
+
+    // Try submit first (standard EAS), then build (alternative)
+    const ascAppId = easConfig.submit?.[env]?.ios?.ascAppId
+      ?? easConfig.build?.[env]?.ios?.ascAppId;
+
     if (!ascAppId) {
-      console.error(chalk.red(`\n✗ build.${env}.ios.ascAppId is not set in eas.json\n`));
+      console.error(chalk.red(
+        `\n✗ No ascAppId found in eas.json\n` +
+        `  Expected: submit.${env}.ios.ascAppId or build.${env}.ios.ascAppId\n` +
+        `  Example:\n` +
+        `    "submit": {\n` +
+        `      "${env}": {\n` +
+        `        "ios": { "ascAppId": "YOUR_APP_ID" }\n` +
+        `      }\n` +
+        `    }\n`
+      ));
       process.exit(1);
     }
 
@@ -86,24 +72,22 @@ export async function buildCommand(options) {
     const team = await Teams.selectTeamAsync();
     console.log(chalk.dim(`Team: ${team.name} (${team.teamId})\n`));
 
+
     // 4. Find Xcode Cloud product for app
     console.log(chalk.dim(`Looking up Xcode Cloud for app ${ascAppId}...`));
 
-    const productsRes = await ascFetch(`/iris/v1/ciProducts?filter[app]=${ascAppId}`);
-    const products = productsRes?.data ?? [];
-
-    if (!products.length) {
+    const product = await findCiProductByAppId(ascAppId);
+    if (!product) {
       throw new Error(
         `No Xcode Cloud product found for app ID "${ascAppId}".\n` +
         '  Make sure Xcode Cloud is set up for this app in App Store Connect.'
       );
     }
 
-    const productId = products[0].id;
+    const productId = product.id;
 
     // 5. Get available workflows
-    const workflowsRes = await ascFetch(`/iris/v1/ciProducts/${productId}/workflows`);
-    const workflows = workflowsRes?.data ?? [];
+    const workflows = await listWorkflows(productId);
 
     if (!workflows.length) {
       throw new Error(
@@ -112,27 +96,46 @@ export async function buildCommand(options) {
       );
     }
 
-    // Use first workflow; future: support workflow selection via eas.json
-    const workflow = workflows[0];
+    console.log(chalk.green(`✓ Found ${workflows.length} workflow(s):`));
+    workflows.forEach((w, index) => {
+      const name = w.attributes?.name ?? w.id;
+      console.log(chalk.dim(`  [${index}] ${name} (${w.id})`));
+    });
+
+    // Always ask user to pick workflow, even if only one exists.
+    const { workflowIndex } = await inquirer.prompt([{
+      type: 'list',
+      name: 'workflowIndex',
+      message: 'Select workflow to trigger:',
+      choices: workflows.map((w, index) => ({
+        name: w.attributes?.name ?? w.id,
+        value: index,
+      })),
+      default: 0,
+    }]);
+
+    const workflow = workflows[workflowIndex];
     const workflowName = workflow.attributes?.name ?? workflow.id;
-    console.log(chalk.dim(`Workflow: ${workflowName}`));
+    console.log(chalk.dim(`Selected workflow: ${workflowName}`));
+
+    const { shouldTrigger } = await inquirer.prompt([{
+      type: 'confirm',
+      name: 'shouldTrigger',
+      message: `Trigger build with "${workflowName}" now?`,
+      default: false,
+    }]);
+
+    if (!shouldTrigger) {
+      console.log(chalk.dim('\nBuild cancelled by user.\n'));
+      return;
+    }
 
     // 6. Start build
     console.log(chalk.dim('Starting build...\n'));
 
-    await ascFetch('/iris/v1/ciBuildRuns', {
-      method: 'POST',
-      body: {
-        data: {
-          type: 'ciBuildRuns',
-          relationships: {
-            workflow: { data: { type: 'ciWorkflows', id: workflow.id } },
-          },
-        },
-      },
-    });
+    await triggerBuildRun(workflow.id);
 
-    const buildUrl = `${ASC}/apps/${ascAppId}/xcode-cloud`;
+    const buildUrl = getAscAppPageUrl(ascAppId);
 
     console.log(chalk.bold('✅ Build started!\n'));
     console.log(`  ${chalk.cyan('Track your build:')}`);

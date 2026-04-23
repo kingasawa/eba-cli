@@ -2,7 +2,7 @@
 
 > **For Expo developers who have hit the EAS free build limit.**
 
-If you're using **Expo EAS** and have run out of free iOS build credits (30 builds/month), `eba-cli` lets you trigger builds directly on **Xcode Cloud** — Apple's own CI/CD service, included free with an Apple Developer account (25 compute hours/month).
+If you're using **Expo EAS** and have run out of free iOS build credits (15 builds/month), `eba-cli` lets you trigger builds directly on **Xcode Cloud** — Apple's own CI/CD service, included free with an Apple Developer account (25 compute hours/month).
 
 No more waiting to buy more EAS credits. Your app, your infrastructure.
 
@@ -10,12 +10,12 @@ No more waiting to buy more EAS credits. Your app, your infrastructure.
 
 ## Why eba-cli?
 
-| | EAS Build (Free) | Xcode Cloud |
-|---|---|---|
-| iOS builds | 30 builds/month | ~75–100 builds/month* |
+| | EAS Build (Free)        | Xcode Cloud |
+|---|-------------------------|---|
+| iOS builds | 15 builds/month         | ~75–100 builds/month* |
 | Cost | Free → paid after limit | Free with Apple Developer ($99/yr) |
-| Setup required | None | One-time setup |
-| Customization | Limited | Full control via ci_scripts |
+| Setup required | None                    | One-time setup |
+| Customization | Limited                 | Full control via ci_scripts |
 
 *Based on ~15 min average build time within 25 compute hours/month.
 
@@ -35,11 +35,11 @@ npm install -g eba-cli
 
 ## Setup
 
-Add `ascAppId` to your existing `eas.json` under the build profile you want to use:
+Add `ascAppId` to your existing `eas.json` under the **`submit`** (or **`build`**) profile you want to use:
 
 ```json
 {
-  "build": {
+  "submit": {
     "production": {
       "ios": {
         "ascAppId": "YOUR_APP_STORE_CONNECT_APP_ID"
@@ -50,6 +50,8 @@ Add `ascAppId` to your existing `eas.json` under the build profile you want to u
 ```
 
 > Find your `ascAppId` in App Store Connect → My Apps → select your app → copy the number from the URL.
+> 
+> Note: `eba` supports both `submit` (standard EAS) and `build` paths. If both exist, `submit` takes priority.
 
 ---
 
@@ -95,7 +97,95 @@ What it does:
 2. Logs into Apple ID (session cached for 1 hour)
 3. Finds the Xcode Cloud workflow for your app
 4. Triggers the build
-5. Returns a direct link to track build progress
+---
+
+> Note: Workflow creation/editing is managed in App Store Connect UI. Apple private APIs are not reliable for CLI automation.
+
+---
+
+## Apple Developer Account Commands
+
+These commands connect to your Apple Developer account to manage credentials and devices — no browser required.
+
+> Apple ID session and team selection are cached for **1 hour**. You won't be prompted again within that window.
+
+---
+
+### `eba devices`
+
+List registered iOS/iPadOS devices on your team, or register a new one.
+
+```bash
+# List all devices
+eba devices
+
+# Jump directly to register flow
+eba devices --register
+```
+
+**Register via QR code** (recommended) — scan with iPhone/iPad on the same WiFi:
+- CLI starts a local server and shows a QR code
+- Tap "Download Profile" → install in Settings → UDID is sent to your Mac automatically
+
+**Or enter UDID manually** as a fallback.
+
+---
+
+### `eba certs`
+
+List iOS distribution & development certificates with type, serial number, and expiry.
+
+```bash
+# List all certificates
+eba certs
+
+# List and revoke one
+eba certs --revoke
+```
+
+Each certificate shows:
+
+| Column | Description |
+|---|---|
+| Name | Certificate display name |
+| Type | e.g. iOS Distribution, APNs |
+| Usage | What the cert is actually used for |
+| Serial | Full serial number |
+| Expiry | Days remaining or expired |
+
+---
+
+### `eba profiles`
+
+List iOS provisioning profiles (App Store, Ad Hoc, Development, Enterprise).
+
+```bash
+# List all profiles
+eba profiles
+
+# List and delete one
+eba profiles --delete
+```
+
+---
+
+### `eba bundle-ids`
+
+List or register bundle IDs (App IDs) on your developer account.
+
+```bash
+# List all iOS bundle IDs
+eba bundle-ids
+
+# Filter by name or identifier
+eba bundle-ids --filter com.example
+
+# Show capabilities for each bundle ID (slower)
+eba bundle-ids --capabilities
+
+# Register a new bundle ID
+eba bundle-ids --register
+```
 
 ---
 
@@ -105,6 +195,7 @@ What it does:
 # One-time setup
 eba prebuild
 git add ios/ && git commit -m "chore: ci scripts" && git push
+
 
 # Every time you want to build
 eba build

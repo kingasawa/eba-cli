@@ -89,11 +89,11 @@ git push
 1. Go to [App Store Connect](https://appstoreconnect.apple.com) → **My Apps** → select your app
 2. Copy the numeric ID from the URL: `https://appstoreconnect.apple.com/apps/`**`1234567890`**`/...`
 
-Add it to `eas.json`:
+Add it to `eas.json` under **`submit`** (or **`build`** if you prefer):
 
 ```json
 {
-  "build": {
+  "submit": {
     "production": {
       "ios": {
         "ascAppId": "1234567890"
@@ -102,6 +102,8 @@ Add it to `eas.json`:
   }
 }
 ```
+
+> Note: `eba` looks for `submit.<env>.ios.ascAppId` first, then falls back to `build.<env>.ios.ascAppId`.
 
 ---
 
@@ -122,6 +124,14 @@ eba build
   Track your build:
   https://appstoreconnect.apple.com/apps/1234567890/xcode-cloud
 ```
+
+---
+
+## Workflow setup note
+
+Workflow creation and editing must be done in App Store Connect UI.
+
+Apple private endpoints for Xcode Cloud workflow management are not stable/reliable, so `eba-cli` only triggers builds for existing workflows.
 
 ---
 
@@ -154,11 +164,11 @@ eba build
 ## EAS Free vs Xcode Cloud
 
 | | EAS Build (Free) | Xcode Cloud |
-|---|---|---|
-| Monthly limit | 30 builds | 25 compute hours (~75–100 builds) |
-| Average build time | 5–10 min | 10–20 min |
-| Setup | None | One-time (Steps 1–5 above) |
-| Customization | Limited | Full control via ci_scripts |
-| Build logs | EAS Dashboard | App Store Connect |
-| TestFlight upload | Automatic | Automatic (if configured) |
-| Cost beyond free tier | Pay per build | N/A — included with $99/yr membership |
+|---|------------------|---|
+| Monthly limit | 15 builds        | 25 compute hours (~75–100 builds) |
+| Average build time | 5–10 min         | 10–20 min |
+| Setup | None             | One-time (Steps 1–5 above) |
+| Customization | Limited          | Full control via ci_scripts |
+| Build logs | EAS Dashboard    | App Store Connect |
+| TestFlight upload | Automatic        | Automatic (if configured) |
+| Cost beyond free tier | Pay per build    | N/A — included with $99/yr membership |
