@@ -84,6 +84,33 @@ git push
 
 ---
 
+### `eba workflow`
+
+Can't create a workflow via API? This command collects all the configuration you need, then opens **App Store Connect directly in your browser** with a step-by-step checklist to fill in.
+
+```bash
+eba workflow
+```
+
+What it does:
+1. Reads your `ascAppId` from `eas.json`
+2. Asks for workflow name, Xcode scheme, start condition, post-build action
+3. Opens the correct App Store Connect page in your browser
+4. Prints a formatted checklist with exactly what to fill in — no guessing
+
+```
+📝 Fill in the following when creating the workflow:
+
+  Workflow name:       Production Build
+  Xcode version:       Latest Release (recommended)
+  Clean build:         ✓ Enabled
+  Start condition:     Push to branch: main
+  Archive scheme:      MyApp
+  Post-build action:   TestFlight — Internal Testing
+```
+
+---
+
 ### `eba build`
 
 Triggers an Xcode Cloud build from your terminal.

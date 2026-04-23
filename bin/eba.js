@@ -7,6 +7,7 @@ import { devicesCommand } from '../src/commands/devices.js';
 import { certsCommand } from '../src/commands/certs.js';
 import { profilesCommand } from '../src/commands/profiles.js';
 import { bundleIdsCommand } from '../src/commands/bundle-ids.js';
+import { workflowCommand } from '../src/commands/workflow.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json');
@@ -55,5 +56,11 @@ program
   .option('--filter <query>', 'Filter by bundle ID or name')
   .option('--capabilities', 'Show capabilities per bundle ID (slower)')
   .action(bundleIdsCommand);
+
+program
+  .command('workflow')
+  .description('Guided workflow setup — collects config and opens App Store Connect')
+  .option('-e, --env <environment>', 'Environment from eas.json', 'production')
+  .action(workflowCommand);
 
 program.parse(process.argv);
