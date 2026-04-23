@@ -198,10 +198,13 @@ eba bundle-ids --register
 eba prebuild
 git add ios/ && git commit -m "chore: ci scripts" && git push
 
-
 # Every time you want to build
 eba build
 ```
+
+> **Tip:** If your Xcode Cloud workflow has a **push trigger on `main`**, you don't need to run `eba build` at all.
+> Simply merge your PR into `main` on GitHub and Xcode Cloud will start the build automatically.
+> Use `eba build` only when you want to trigger a build manually without pushing code.
 
 ---
 
