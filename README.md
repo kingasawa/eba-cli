@@ -209,6 +209,17 @@ During `eba workflow`, choose "TestFlight Internal Testing" or "TestFlight & Ext
 
 ---
 
+## ☕ Support
+
+Did this tool save you time or money?  
+If it helped you dodge the EAS build limit, avoid buying a Mac, or just made your day a little easier — a coffee would mean a lot.
+
+👉 **[github.com/sponsors/kingasawa](https://github.com/sponsors/kingasawa)**
+
+Your support keeps this project alive and the AI fed. Thank you ☕
+
+---
+
 ## ❓ FAQ
 
 **Q: Can I use eba-cli on Windows or Linux without a Mac?**  
@@ -256,13 +267,7 @@ MIT + Commons Clause — free to use for personal and commercial projects. You m
 ### v1.2.1
 - `eba workflow` provided a step-by-step guide to create workflows manually via App Store Connect web UI
 
----
+### v1.2
+- `eba prebuild` generates `ci_scripts/` required by Xcode Cloud for Expo & React Native projects
 
-## ☕ Support
-
-Did this tool save you time or money?  
-If it helped you dodge the EAS build limit, avoid buying a Mac, or just made your day a little easier — a coffee would mean a lot.
-
-👉 **[github.com/sponsors/kingasawa](https://github.com/sponsors/kingasawa)**
-
-Your support keeps this project alive and the AI fed. Thank you ☕
+### v1.0 Initial release — trigger Xcode Cloud builds from your terminal with `eba build` after manual workflow setup
