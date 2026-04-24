@@ -122,16 +122,13 @@ async function ascApiRequest(path, { method = 'GET', body, jwt } = {}) {
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
 export async function getCiProduct(jwt, ascAppId) {
-  const data = await ascApiRequest(
-    `/v1/ciProducts?filter[app]=${ascAppId}&limit=1`,
-    { jwt }
-  );
+  const data = await ascApiRequest(`/v1/ciProducts?filter[app]=${ascAppId}&limit=1`, { jwt });
   return data?.data?.[0] ?? null;
 }
 
-export async function getCiProductRepositories(jwt, productId) {
+export async function getCiWorkflows(jwt, productId) {
   const data = await ascApiRequest(
-    `/v1/ciProducts/${productId}/additionalRepositories`,
+    `/v1/ciProducts/${productId}/workflows?limit=50`,
     { jwt }
   );
   return data?.data ?? [];
@@ -150,6 +147,26 @@ export async function getXcodeVersions(jwt) {
 export async function getMacOsVersions(jwt) {
   const data = await ascApiRequest('/v1/ciMacOsVersions', { jwt });
   return data?.data ?? [];
+}
+
+export async function getScmProviders(jwt) {
+  const data = await ascApiRequest('/v1/scmProviders?limit=50', { jwt });
+  return data?.data ?? [];
+}
+
+/**
+ * Poll /v1/scmRepositories until a repo that was NOT in `knownIds` appears,
+ * or until timeout. Returns the new repo object or null on timeout.
+ */
+export async function pollForNewRepository(jwt, knownIds = new Set(), { intervalMs = 3000, timeoutMs = 120000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, intervalMs));
+    const repos = await getScmRepositories(jwt);
+    const newRepo = repos.find(r => !knownIds.has(r.id));
+    if (newRepo) return newRepo;
+  }
+  return null;
 }
 
 export async function createCiWorkflow(jwt, {
@@ -212,6 +229,8 @@ export async function createCiWorkflow(jwt, {
   const result = await ascApiRequest('/v1/ciWorkflows', { method: 'POST', body, jwt });
   return result?.data ?? null;
 }
+
+
 
 
 

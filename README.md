@@ -259,3 +259,14 @@ eba build
 ## License
 
 MIT
+
+---
+
+## ☕ Support
+
+If this tool saves you time or money — helped you avoid buying a Mac, or freed you from EAS build limits — a coffee would mean a lot!
+
+👉 **[github.com/sponsors/kingasawa](https://github.com/sponsors/kingasawa)**
+
+Your support helps keep this project alive and the AI fed. Thank you ☕
+

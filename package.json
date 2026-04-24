@@ -6,6 +6,12 @@
   "bin": {
     "eba": "bin/eba.js"
   },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=18.0.0"
   },
@@ -36,7 +42,7 @@
     "mobile-ci"
   ],
   "author": "trancatkhanh",
-  "license": "MIT",
+  "license": "MIT AND Commons-Clause",
   "repository": {
     "type": "git",
     "url": "https://github.com/kingasawa/eba-cli.git"

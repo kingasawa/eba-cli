@@ -9,7 +9,7 @@ import pkg from '@expo/apple-utils';
 import { appleLogin } from '../auth/apple.js';
 import {
   loadApiKeyCreds, saveApiKeyCreds, generateJwt, getCredsFilePath,
-  getCiProduct, getScmRepositories,
+  getCiProduct, getCiWorkflows, getScmRepositories, getScmProviders, pollForNewRepository,
   getXcodeVersions, getMacOsVersions,
   createCiWorkflow,
 } from '../api/asc-api.js';
@@ -150,6 +150,77 @@ async function ensureApiKeyCreds(setupMode = false) {
   return autoSetupApiKey();
 }
 
+// ─── Connect new GitHub repo flow ────────────────────────────────────────────
+
+async function connectNewGitHubRepo(jwt, knownIds, { ascAppId, issuerId, productId } = {}) {
+  console.log('');
+
+  // Always open the Manage Workflows page — user is creating a NEW workflow,
+  // so they click "Create Workflow" there which triggers the GitHub connection dialog.
+  const ascUrl = (issuerId && ascAppId)
+    ? `https://appstoreconnect.apple.com/teams/${issuerId}/apps/${ascAppId}/ci/workflows`
+    : 'https://appstoreconnect.apple.com';
+
+  console.log(chalk.bold('\n  Connect Xcode Cloud with GitHub\n'));
+  console.log(chalk.dim('  Apple requires granting GitHub access through App Store Connect.\n'));
+  console.log(chalk.white('  Steps:'));
+  console.log(chalk.dim('  1. Your browser will open App Store Connect → Manage Workflows.'));
+  console.log(chalk.dim('  2. Click "Create Workflow" → set the Repository field.'));
+  console.log(chalk.dim('  3. A dialog "Connect Xcode Cloud with GitHub" will appear.'));
+  console.log(chalk.dim('  4. Complete "Step 2 in GitHub" — select your org and grant repo access.'));
+  console.log(chalk.dim('  5. Click Save on GitHub, then come back here and press ENTER.\n'));
+  console.log(chalk.dim(`  Opening: ${ascUrl}\n`));
+
+  // Open ASC in browser
+  try {
+    const cmd = process.platform === 'win32' ? 'start' :
+      process.platform === 'darwin' ? 'open' : 'xdg-open';
+    execFileSync(cmd, [ascUrl], { shell: process.platform === 'win32' });
+  } catch {}
+
+  // Wait for user to finish on GitHub
+  const { afterGithub } = await inquirer.prompt([{
+    type: 'list',
+    name: 'afterGithub',
+    message: 'What would you like to do?',
+    choices: [
+      { name: 'I have granted access — continue', value: 'continue' },
+      { name: '← Go back to repository selection', value: 'back' },
+      { name: '✕ Cancel', value: 'cancel' },
+    ],
+  }]);
+
+  if (afterGithub === 'cancel') return 'cancel';
+  if (afterGithub === 'back') return null;
+
+  // Poll for new repo (up to 2 minutes)
+  console.log(chalk.dim('Waiting for repository to appear in App Store Connect...'));
+  const POLL_INTERVAL = 3000;
+  const TIMEOUT = 60000;
+  const deadline = Date.now() + TIMEOUT;
+  let newRepo = null;
+
+  process.stdout.write(chalk.dim('  Polling'));
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, POLL_INTERVAL));
+    process.stdout.write(chalk.dim('.'));
+    const current = await getScmRepositories(jwt);
+    newRepo = current.find(r => !knownIds.has(r.id));
+    if (newRepo) break;
+  }
+  process.stdout.write('\n');
+
+  if (!newRepo) {
+    console.log(chalk.yellow('\n⚠ Repository did not appear after 1 minute.'));
+    console.log(chalk.dim('  Make sure you saved the GitHub App settings. Returning to repo selection...\n'));
+    return null;
+  }
+
+  const repoName = `${newRepo.attributes?.ownerName ?? ''}/${newRepo.attributes?.repositoryName ?? newRepo.id}`;
+  console.log(chalk.green(`✓ Repository connected: ${repoName}\n`));
+  return newRepo.id;
+}
+
 // ─── Command ──────────────────────────────────────────────────────────────────
 
 export async function workflowCommand(options) {
@@ -187,35 +258,49 @@ export async function workflowCommand(options) {
     }
     console.log(chalk.green(`✓ Xcode Cloud product: ${product.attributes?.name ?? product.id}`));
 
-    // 4. Find repository
-    console.log(chalk.dim('Fetching connected repositories...'));
-    const repos = await getScmRepositories(jwt);
-    if (!repos.length) {
-      console.log(chalk.red('\n✗ No source code repositories are connected to App Store Connect.\n'));
-      console.log(chalk.bold('  How to connect your GitHub repository:'));
-      console.log(chalk.dim('  1. Go to App Store Connect → your app → Xcode Cloud → Get Started'));
-      console.log(chalk.dim('  2. Or go to https://appstoreconnect.apple.com → Integrations → Xcode Cloud'));
-      console.log(chalk.dim('  3. Sign in with your GitHub account and grant access to your repo'));
-      console.log(chalk.dim('  4. Re-run this command after connecting\n'));
-      console.log(chalk.dim('  Note: GitHub, Bitbucket, GitLab and Bitbucket Server are all supported.\n'));
-      process.exit(1);
-    }
+    // 4. Find repository — loop until a valid repo is selected
+    const CONNECT_NEW = '__connect_new__';
+    let repoId = null;
 
-    let repoId;
-    if (repos.length === 1) {
-      repoId = repos[0].id;
-      console.log(chalk.green(`✓ Repository: ${repos[0].attributes?.repositoryName ?? repos[0].id}`));
-    } else {
-      const { idx } = await inquirer.prompt([{
-        type: 'list',
-        name: 'idx',
-        message: 'Select repository:',
-        choices: repos.map((r, i) => ({
-          name: `${r.attributes?.ownerName ?? ''}/${r.attributes?.repositoryName ?? r.id}`,
-          value: i,
-        })),
-      }]);
-      repoId = repos[idx].id;
+    while (!repoId) {
+      console.log(chalk.dim('Fetching connected repositories...'));
+      const repos = await getScmRepositories(jwt);
+      const knownIds = new Set(repos.map(r => r.id));
+
+      if (repos.length === 0) {
+        console.log(chalk.yellow('\n⚠ No repositories connected to Xcode Cloud yet.'));
+        const newId = await connectNewGitHubRepo(jwt, knownIds, { ascAppId, issuerId: creds.issuerId });
+        if (newId === 'cancel') { console.log(chalk.dim('Cancelled.\n')); process.exit(0); }
+        if (newId) repoId = newId;
+      } else {
+        const CANCEL = '__cancel__';
+        const { repoChoice } = await inquirer.prompt([{
+          type: 'list',
+          name: 'repoChoice',
+          message: 'Select repository:',
+          choices: [
+            ...repos.map(r => ({
+              name: `${r.attributes?.ownerName ?? ''}/${r.attributes?.repositoryName ?? r.id}`,
+              value: r.id,
+            })),
+            new inquirer.Separator(),
+            { name: '+ Connect a new GitHub repository...', value: CONNECT_NEW },
+            { name: '✕ Cancel', value: CANCEL },
+          ],
+        }]);
+
+        if (repoChoice === CANCEL) {
+          console.log(chalk.dim('Cancelled.\n'));
+          process.exit(0);
+        } else if (repoChoice === CONNECT_NEW) {
+          const newId = await connectNewGitHubRepo(jwt, knownIds, { ascAppId, issuerId: creds.issuerId });
+          if (newId === 'cancel') { console.log(chalk.dim('Cancelled.\n')); process.exit(0); }
+          if (newId) repoId = newId;
+          // if null (timeout), loop again — user sees updated repo list
+        } else {
+          repoId = repoChoice;
+        }
+      }
     }
 
     // 5. Xcode + macOS versions — auto-pick latest, ask only if user wants to change
