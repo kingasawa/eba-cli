@@ -270,4 +270,5 @@ MIT + Commons Clause — free to use for personal and commercial projects. You m
 ### v1.2
 - `eba prebuild` generates `ci_scripts/` required by Xcode Cloud for Expo & React Native projects
 
-### v1.0 Initial release — trigger Xcode Cloud builds from your terminal with `eba build` after manual workflow setup
+### v1.0 
+- Initial release — trigger Xcode Cloud builds from your terminal with `eba build` after manual workflow setup
