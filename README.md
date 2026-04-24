@@ -3,6 +3,8 @@
 [![npm version](https://img.shields.io/npm/v/eba-cli.svg)](https://www.npmjs.com/package/eba-cli)
 [![npm downloads](https://img.shields.io/npm/dm/eba-cli.svg)](https://www.npmjs.com/package/eba-cli)
 [![license](https://img.shields.io/npm/l/eba-cli.svg)](LICENSE)
+![GitHub Sponsors](https://img.shields.io/github/sponsors/kingasawa)
+
 
 **Trigger iOS builds on Xcode Cloud from your terminal — no Mac, no browser, no EAS build limits.**  
 Works on Windows, macOS, and Linux. Built for Expo and React Native developers.
