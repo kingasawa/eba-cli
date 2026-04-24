@@ -241,6 +241,21 @@ MIT + Commons Clause — free to use for personal and commercial projects. You m
 
 ---
 
+## Changelog
+
+### v1.2.2
+- **`eba workflow` fully automated** — workflow creation now happens entirely via the App Store Connect API. No more manual steps in Xcode or the browser.
+- Auto-creates an ASC API key on first run (saved locally, reused automatically)
+- Detects your Xcode Cloud product and connected GitHub repository
+- Supports connecting a new GitHub repository directly from the CLI prompt
+- Polls for repository access confirmation automatically after GitHub OAuth
+- Prints a direct link to the created workflow on App Store Connect
+
+### v1.2.1
+- `eba workflow` provided a step-by-step guide to create workflows manually via App Store Connect web UI
+
+---
+
 ## ☕ Support
 
 Did this tool save you time or money?  
