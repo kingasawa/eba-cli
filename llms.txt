@@ -1,0 +1,100 @@
+# eba-cli
+
+eba-cli is a command-line tool for Expo and React Native developers who want to use Xcode Cloud as a free alternative to EAS Build when they hit the monthly build limit.
+
+## Why it exists
+
+Expo EAS Build free tier is limited to 15 builds/month. Apple gives every Apple Developer account member 25 free compute hours/month on Xcode Cloud (~75–100 iOS builds/month). eba-cli provides a CLI interface to manage and trigger Xcode Cloud builds without needing Xcode IDE or the App Store Connect web UI. It works on any OS — Windows, macOS, Linux.
+
+## What it is NOT
+
+- Not an Expo or Apple official tool
+- Not a replacement for Xcode or the full EAS suite
+- Not a tool for Android builds (iOS / Xcode Cloud only)
+
+## How it works
+
+eba-cli authenticates with Apple ID using the same SRP protocol as EAS CLI (via @expo/apple-utils). After login, it communicates with the App Store Connect internal API (iris) and the public REST API to manage CI products, workflows, and build runs. Session is cached locally for 1 hour.
+
+Build configuration (ascAppId) is read from the project's existing eas.json file — no new config file is required.
+
+## Commands
+
+### eba build
+Triggers an Xcode Cloud build from the terminal.
+- Reads ascAppId from eas.json (submit.[env].ios.ascAppId or build.[env].ios.ascAppId)
+- Warns if ios/ has uncommitted changes (Xcode Cloud pulls from last pushed commit)
+- Prompts user to select a workflow if multiple exist
+- Prints a direct link to track the build in App Store Connect
+
+### eba prebuild
+Generates ios/ci_scripts/ — shell scripts required by Xcode Cloud to set up the build environment for a React Native / Expo project.
+- ci_post_clone.sh: detects Node.js (nvm/Homebrew), runs npm install, installs CocoaPods, patches fmt headers for Apple Clang 15+
+- ci_pre_xcodebuild.sh: syncs Manifest.lock, sets build number via agvtool
+- ci_post_build.sh: logs build metadata
+- App name is read from app.json and substituted into the scripts
+- Run this once after expo prebuild generates the ios/ folder, then push ios/ to GitHub
+
+### eba workflow
+Creates an Xcode Cloud workflow via the App Store Connect API.
+- No browser or Xcode IDE required
+- Prompts for workflow name, scheme, branch trigger, and TestFlight distribution option
+
+### eba devices
+Lists registered iOS/iPadOS devices in the Apple Developer account.
+- --register: register a new device via UDID (QR code flow or manual entry)
+
+### eba certs
+Lists iOS distribution and development certificates.
+- --revoke: select and revoke a certificate
+
+### eba profiles
+Lists iOS provisioning profiles.
+- --delete: select and delete a profile
+
+### eba bundle-ids
+Lists registered bundle IDs (App IDs).
+- --register: register a new bundle ID
+- --filter <query>: filter by bundle ID or name
+- --capabilities: show capabilities per bundle ID
+
+## Configuration
+
+No dedicated config file. Uses the project's existing eas.json:
+
+```json
+{
+  "submit": {
+    "production": {
+      "ios": {
+        "ascAppId": "1234567890"
+      }
+    }
+  }
+}
+```
+
+ascAppId is the numeric App Store Connect app ID found in the URL:
+https://appstoreconnect.apple.com/apps/1234567890/...
+
+## Auth
+
+- Apple ID login via @expo/apple-utils (SRP protocol, same as EAS CLI)
+- Session cached for 1 hour in ~/.eba-cli/config.json
+- No API key required for eba build, eba prebuild, eba devices, eba certs, eba profiles, eba bundle-ids
+
+## Requirements
+
+- Node.js >= 18
+- Apple Developer Program membership ($99/year)
+- App registered on App Store Connect
+- Xcode Cloud enabled for the app (App Store Connect → app → Xcode Cloud → Get Started)
+- Source code on GitHub, Bitbucket, or GitLab (required by Xcode Cloud)
+
+## Typical workflow
+
+1. Run expo prebuild to generate ios/ folder (standard Expo step)
+2. Run eba prebuild to add ios/ci_scripts/
+3. Push ios/ to GitHub
+4. Run eba workflow once to create a workflow on Xcode Cloud
+5. Run eba build whenever a new build is needed
